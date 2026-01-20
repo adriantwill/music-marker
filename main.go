@@ -98,7 +98,7 @@ func albumUpdate() {
 	searchTerm := artistName + " " + albumName
 
 	metadataUpdate(directory, searchTerm)
-
+	//exit before doing last function
 }
 
 func metadataUpdate(dir string, searchTerm string) {
