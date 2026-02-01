@@ -376,7 +376,7 @@ func processFile(m4aFile, songTitle string, scraped ScrapedData) error {
 
 		if !downloaded {
 			fmt.Println("Warning: Could not download artwork, continuing without it")
-			artworkPath = "" // Reset so we don't try to use it
+			artworkPath = "" // Reset so we don't try to use it here
 		}
 	}
 
