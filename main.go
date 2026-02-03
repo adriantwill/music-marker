@@ -40,6 +40,7 @@ type Song struct {
 }
 
 type ScrapedData struct {
+	Title       string
 	Album       string
 	Artist      string
 	Genre       string
@@ -170,7 +171,7 @@ func metadataUpdate(dir string, searchTerm string) {
 			}
 		} else {
 
-			if err := processFile(m4aFile, songTitle, scraped); err != nil {
+			if err := processFile(m4aFile, scraped); err != nil {
 				fmt.Printf("Error processing file: %v\n\n", err)
 				continue
 			}
@@ -316,18 +317,20 @@ func getMetadataFromiTunes(songID string) (ScrapedData, error) {
 
 	track := result.Results[0]
 
-	// Prefer collectionArtistName, fallback to artistName
+	// Prefer collectionArtistName, fallback to artistName (stripped)
 	artist := track.CollectionArtistName
 	if artist == "" {
 		artist = track.ArtistName
-	}
-	if idx := strings.Index(artist, " &"); idx != -1 {
-		artist = artist[:idx]
-	}
-	if idx := strings.Index(artist, ", "); idx != -1 {
-		artist = artist[:idx]
+		// Only strip multi-artist delimiters from artistName
+		if idx := strings.Index(artist, " & "); idx != -1 {
+			artist = artist[:idx]
+		}
+		if idx := strings.Index(artist, ", "); idx != -1 {
+			artist = artist[:idx]
+		}
 	}
 
+	data.Title = track.TrackName
 	data.Album = track.CollectionName
 	data.Artist = artist
 	data.Genre = track.PrimaryGenreName
@@ -346,9 +349,9 @@ func getMetadataFromiTunes(songID string) (ScrapedData, error) {
 	return data, nil
 }
 
-func processFile(m4aFile, songTitle string, scraped ScrapedData) error {
+func processFile(m4aFile string, scraped ScrapedData) error {
 	// Get lyrics
-	lyrics := getLyrics(songTitle, scraped.Artist)
+	lyrics := getLyrics(scraped.Title, scraped.Artist)
 
 	// Download artwork with fallbacks
 	artworkPath := ""
@@ -383,7 +386,7 @@ func processFile(m4aFile, songTitle string, scraped ScrapedData) error {
 	// Build AtomicParsley command
 	args := []string{m4aFile, "--overWrite",
 		"--artwork", "REMOVE_ALL", // Remove all existing artwork first
-		"--title", songTitle,
+		"--title", scraped.Title,
 		"--artist", scraped.Artist,
 		"--album", scraped.Album,
 		"--genre", scraped.Genre,
@@ -429,7 +432,7 @@ func processFile(m4aFile, songTitle string, scraped ScrapedData) error {
 	}
 
 	// Move file
-	newFileName := fmt.Sprintf("%s.m4a", songTitle)
+	newFileName := fmt.Sprintf("%s.m4a", scraped.Title)
 	destPath := filepath.Join(destDir, newFileName)
 	if err := os.Rename(m4aFile, destPath); err != nil {
 		return fmt.Errorf("failed to move file: %w", err)
