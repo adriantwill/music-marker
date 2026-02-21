@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -75,32 +76,34 @@ type iTunesTrack struct {
 }
 
 func main() {
+	fmt.Print("Welcome to Music Metadata Marker")
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Enter local apple music album directory to update metadata (blank for adding song from Downloads): ")
-	input, _ := reader.ReadString('\n')
-	directory := strings.TrimSpace(input)
-	if directory == "" {
-		metadataUpdate("", "")
+	fmt.Print("Enter 1 if you want to enter each songs Apple Music ID, or 2 if you want to use the file name as the song title: ")
+	choice, _ := reader.ReadString('\n')
+	searchTerm := ""
+	switch strings.TrimSpace(choice) {
+	case "1":
+
+	case "2":
+		fmt.Print("Enter additional search terms to automatically find song ID for all songs: ")
+		searchTerm, _ = reader.ReadString('\n')
+	default:
+		fmt.Println("Error: invalid option")
 		return
 	}
-	albumUpdate(directory)
-}
+	fmt.Print("Enter directory to update songs (leave black for Downloads): ")
+	input, _ := reader.ReadString('\n')
+	directory := strings.TrimSpace(input)
 
-func albumUpdate(directory string) {
-	parts := strings.Split(filepath.Clean(directory), string(filepath.Separator))
-	albumName := parts[len(parts)-1]
-	artistName := parts[len(parts)-2]
-	searchTerm := artistName + " " + albumName
-	metadataUpdate(directory, searchTerm)
-}
-
-func metadataUpdate(dir string, searchTerm string) {
-	homeDir, _ := os.UserHomeDir()
-	targetDir := filepath.Join(homeDir, "Downloads")
-	if dir != "" {
-		targetDir = dir
+	if directory == "" {
+		homeDir, _ := os.UserHomeDir()
+		directory = filepath.Join(homeDir, "Downloads")
 	}
-	matches, err := filepath.Glob(filepath.Join(targetDir, "*.m4a"))
+	metadataUpdate(directory, searchTerm, choice)
+}
+
+func metadataUpdate(dir string, searchTerm string, choice string) {
+	matches, err := filepath.Glob(filepath.Join(dir, "*.m4a"))
 	if err != nil || len(matches) == 0 {
 		println(dir)
 		fmt.Println("No m4a files found in target directory")
@@ -115,7 +118,7 @@ func metadataUpdate(dir string, searchTerm string) {
 		songTitle := strings.TrimSuffix(baseName, ".m4a")
 		fmt.Printf("Song title: %s\n", songTitle)
 		songID := ""
-		if dir == "" {
+		if choice == "1" {
 			fmt.Print("Enter song ID: ")
 			reader := bufio.NewReader(os.Stdin)
 			songID, _ = reader.ReadString('\n')
@@ -188,16 +191,28 @@ func downloadFile(url, dest string) error {
 }
 
 func getLyrics(song string, artist string) string {
-	lyricsURL := fmt.Sprintf("https://api.lyrics.ovh/v1/%s/%s/", artist, song)
+	lyricsURL := fmt.Sprintf(
+		"https://api.lyrics.ovh/v1/%s/%s/",
+		url.PathEscape(artist),
+		url.PathEscape(song),
+	)
 	fmt.Printf("Fetching lyrics from: %s\n", lyricsURL)
 	client := &http.Client{Timeout: 15 * time.Second}
 
-	req, _ := http.NewRequest("GET", lyricsURL, nil)
+	req, err := http.NewRequest("GET", lyricsURL, nil)
+	if err != nil {
+		fmt.Println("Error creating lyrics request:", err)
+		return ""
+	}
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 	resp, err := client.Do(req)
-
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil {
+		fmt.Println("Error fetching lyrics:", err)
+		return ""
+	}
+	if resp.StatusCode != http.StatusOK {
 		fmt.Println("Error fetching lyrics:", resp.Status)
+		resp.Body.Close()
 		return ""
 	}
 	defer resp.Body.Close()
