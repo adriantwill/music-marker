@@ -103,7 +103,19 @@ func main() {
 
 func metadataUpdate(dir string, searchTerm string, choice string) {
 
-	matches, err := filepath.Glob(filepath.Join(dir, "*.m4a"))
+	matches := make([]string, 0, 128)
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if strings.EqualFold(filepath.Ext(path), ".m4a") {
+			matches = append(matches, path)
+		}
+		return nil
+	})
 	if err != nil || len(matches) == 0 {
 		println(dir)
 		fmt.Println("No m4a files found in target directory")
