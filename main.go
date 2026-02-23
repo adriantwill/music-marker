@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -103,6 +102,7 @@ func main() {
 }
 
 func metadataUpdate(dir string, searchTerm string, choice string) {
+
 	matches, err := filepath.Glob(filepath.Join(dir, "*.m4a"))
 	if err != nil || len(matches) == 0 {
 		println(dir)
@@ -116,6 +116,10 @@ func metadataUpdate(dir string, searchTerm string, choice string) {
 		fmt.Printf("File: %s\n", filepath.Base(m4aFile))
 		baseName := filepath.Base(m4aFile)
 		songTitle := strings.TrimSuffix(baseName, ".m4a")
+		if len(songTitle) >= 2 {
+			songTitle = strings.TrimSpace(songTitle[2:])
+		}
+
 		fmt.Printf("Song title: %s\n", songTitle)
 		songID := ""
 		if choice == "1" {
@@ -250,10 +254,8 @@ func extractSongIDFromSearch(songTitle, artist string) (string, error) {
 			}
 		}
 	})
-	searchTerm := songTitle + " " + artist
-	re := regexp.MustCompile(`[^a-zA-Z0-9 ]`)
-	cleaned := re.ReplaceAllString(searchTerm, "")
-	searchURL := fmt.Sprintf("https://music.apple.com/us/search?term=%s", cleaned)
+	searchTerm := normalizeAppleSearchTerm(songTitle, artist)
+	searchURL := fmt.Sprintf("https://music.apple.com/us/search?term=%s", encodeAppleSearchTerm(searchTerm))
 	fmt.Println(searchURL)
 
 	err := c.Visit(searchURL)
@@ -266,6 +268,19 @@ func extractSongIDFromSearch(songTitle, artist string) (string, error) {
 	}
 
 	return songID, nil
+}
+
+func normalizeAppleSearchTerm(songTitle, artist string) string {
+	songTitle = strings.ReplaceAll(songTitle, "+", " ")
+	artist = strings.ReplaceAll(artist, "+", " ")
+	combined := strings.TrimSpace(songTitle + " " + artist)
+	combined = strings.NewReplacer("(", " ", ")", " ").Replace(combined)
+	return strings.Join(strings.Fields(combined), " ")
+}
+
+func encodeAppleSearchTerm(searchTerm string) string {
+	encoded := url.QueryEscape(searchTerm)
+	return strings.ReplaceAll(encoded, "+", "%20")
 }
 
 func getMetadataFromiTunes(songID string) (ScrapedData, error) {
