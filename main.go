@@ -79,13 +79,16 @@ func main() {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("Enter 1 if you want to enter each songs Apple Music ID, or 2 if you want to use the file name as the song title: ")
 	choice, _ := reader.ReadString('\n')
+	choice = strings.TrimSpace(choice)
 	searchTerm := ""
-	switch strings.TrimSpace(choice) {
+	switch choice {
 	case "1":
 
 	case "2":
 		fmt.Print("Enter additional search terms to automatically find song ID for all songs: ")
 		searchTerm, _ = reader.ReadString('\n')
+	case "3":
+
 	default:
 		fmt.Println("Error: invalid option")
 		return
@@ -98,24 +101,50 @@ func main() {
 		homeDir, _ := os.UserHomeDir()
 		directory = filepath.Join(homeDir, "Downloads")
 	}
+	if choice == "3" {
+		dirs, err := listDirectoriesAtDepth(directory, 2)
+		if err != nil {
+			fmt.Printf("Error listing directories: %v\n", err)
+			return
+		}
+		fmt.Println("Directories 2 levels down:")
+		for _, dir := range dirs {
+			fmt.Println(dir)
+		}
+		return
+	}
 	metadataUpdate(directory, searchTerm, choice)
 }
 
-func metadataUpdate(dir string, searchTerm string, choice string) {
-
-	matches := make([]string, 0, 128)
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+func listDirectoriesAtDepth(root string, targetDepth int) ([]string, error) {
+	var dirs []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return nil
 		}
-		if d.IsDir() {
+		if !d.IsDir() {
 			return nil
 		}
-		if strings.EqualFold(filepath.Ext(path), ".m4a") {
-			matches = append(matches, path)
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == "." {
+			return nil
+		}
+		depth := strings.Count(filepath.ToSlash(rel), "/") + 1
+		if depth == targetDepth {
+			dirs = append(dirs, path)
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return dirs, nil
+}
+
+func metadataUpdate(dir string, searchTerm string, choice string) {
+	choice = strings.TrimSpace(choice)
+
+	matches, err := filepath.Glob(filepath.Join(dir, "*.m4a"))
 	if err != nil || len(matches) == 0 {
 		println(dir)
 		fmt.Println("No m4a files found in target directory")
