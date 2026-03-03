@@ -109,7 +109,8 @@ func main() {
 		}
 		fmt.Println("Directories 2 levels down:")
 		for _, dir := range dirs {
-			fmt.Println(dir)
+			fmt.Println(dir) //random
+
 		}
 		return
 	}
