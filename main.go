@@ -111,7 +111,7 @@ func main() {
 		for _, dir := range dirs {
 			fmt.Println(dir) //random
 
-		}
+		} //change
 		return
 	}
 	metadataUpdate(directory, searchTerm, choice)
