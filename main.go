@@ -75,46 +75,48 @@ type iTunesTrack struct {
 }
 
 func main() {
-	fmt.Print("Welcome to Music Metadata Marker")
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Enter 1 if you want to enter each songs Apple Music ID, or 2 if you want to use the file name as the song title: ")
-	choice, _ := reader.ReadString('\n')
-	choice = strings.TrimSpace(choice)
-	searchTerm := ""
-	switch choice {
-	case "1":
+	testing()
+	// fmt.Print("Welcome to Music Metadata Marker")
+	// reader := bufio.NewReader(os.Stdin)
+	// fmt.Print("Enter 1 if you want to enter each songs Apple Music ID, or 2 if you want to use the file name as the song title: ")
+	// choice, _ := reader.ReadString('\n')
+	// choice = strings.TrimSpace(choice)
+	// searchTerm := ""
+	// switch choice {
+	// case "1":
 
-	case "2":
-		fmt.Print("Enter additional search terms to automatically find song ID for all songs: ")
-		searchTerm, _ = reader.ReadString('\n')
-	case "3":
+	// case "2":
+	// 	fmt.Print("Enter additional search terms to automatically find song ID for all songs: ")
+	// 	searchTerm, _ = reader.ReadString('\n')
+	// case "3":
+	// 	fmt.Print("Enter the correspondingApple Music Album ID: ")
+	// 	searchTerm, _ = reader.ReadString('\n')
+	// default:
+	// 	fmt.Println("Error: invalid option")
+	// 	return
+	// }
+	// fmt.Print("Enter directory to update songs (leave black for Downloads): ")
+	// input, _ := reader.ReadString('\n')
+	// directory := strings.TrimSpace(input)
 
-	default:
-		fmt.Println("Error: invalid option")
-		return
-	}
-	fmt.Print("Enter directory to update songs (leave black for Downloads): ")
-	input, _ := reader.ReadString('\n')
-	directory := strings.TrimSpace(input)
+	// if directory == "" {
+	// 	homeDir, _ := os.UserHomeDir()
+	// 	directory = filepath.Join(homeDir, "Downloads")
+	// }
+	// if choice == "3" {
+	// 	dirs, err := listDirectoriesAtDepth(directory, 2)
+	// 	if err != nil {
+	// 		fmt.Printf("Error listing directories: %v\n", err)
+	// 		return
+	// 	}
+	// 	fmt.Println("Directories 2 levels down:")
+	// 	for _, dir := range dirs {
+	// 		fmt.Println(dir) //random here
 
-	if directory == "" {
-		homeDir, _ := os.UserHomeDir()
-		directory = filepath.Join(homeDir, "Downloads")
-	}
-	if choice == "3" {
-		dirs, err := listDirectoriesAtDepth(directory, 2)
-		if err != nil {
-			fmt.Printf("Error listing directories: %v\n", err)
-			return
-		}
-		fmt.Println("Directories 2 levels down:")
-		for _, dir := range dirs {
-			fmt.Println(dir) //random
-
-		} //change
-		return
-	}
-	metadataUpdate(directory, searchTerm, choice)
+	// 	} //change
+	// 	return
+	// }
+	// metadataUpdate(directory, searchTerm, choice)
 }
 
 func listDirectoriesAtDepth(root string, targetDepth int) ([]string, error) {
@@ -362,7 +364,7 @@ func getMetadataFromiTunes(songID string) (ScrapedData, error) {
 		data.Explicit = Explicit
 	}
 
-	data.Artwork = strings.ReplaceAll(track.ArtworkUrl100, "100x100bb.jpg", "100000x100000-999.jpg")
+	data.Artwork = strings.ReplaceAll(track.ArtworkUrl100, "100x100bb.jpg", "3000x3000bb.jpg")
 
 	return data, nil
 }
@@ -399,22 +401,11 @@ func processFile(m4aFile string, scraped ScrapedData) error {
 	artworkPath := ""
 	if scraped.Artwork != "" {
 		artworkPath = filepath.Join(os.TempDir(), "artwork.jpg")
-
-		// Try high-res first, then fallback to lower resolutions
-		artworkURLs := []string{
-			scraped.Artwork, // 100000x100000-999.jpg
-			strings.ReplaceAll(scraped.Artwork, "100000x100000-999.jpg", "3000x3000bb.jpg"),
-			strings.ReplaceAll(scraped.Artwork, "100000x100000-999.jpg", "600x600bb.jpg"),
-		}
-
 		downloaded := false
-		for _, artURL := range artworkURLs {
-			if err := downloadFile(artURL, artworkPath); err == nil {
-				if info, err := os.Stat(artworkPath); err == nil && info.Size() > 0 {
-					fmt.Printf("Downloaded artwork: %s (%.1f KB)\n", artURL, float64(info.Size())/1024)
-					downloaded = true
-					break
-				}
+		if err := downloadFile(scraped.Artwork, artworkPath); err == nil {
+			if info, err := os.Stat(artworkPath); err == nil && info.Size() > 0 {
+				fmt.Printf("Downloaded artwork: %s (%.1f KB)\n", scraped.Artwork, float64(info.Size())/1024)
+				downloaded = true
 			}
 		}
 
