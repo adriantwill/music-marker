@@ -2,7 +2,11 @@ module example.com/mod
 
 go 1.25.5
 
-require github.com/gocolly/colly/v2 v2.3.0
+require (
+	github.com/abema/go-mp4 v1.4.1
+	github.com/gocolly/colly/v2 v2.3.0
+	github.com/sunfish-shogi/bufseekio v0.1.0
+)
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0 // indirect
@@ -14,6 +18,7 @@ require (
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
+	github.com/google/uuid v1.1.2 // indirect
 	github.com/kennygrant/sanitize v1.2.4 // indirect
 	github.com/nlnwa/whatwg-url v0.6.2 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect

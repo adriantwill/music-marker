@@ -75,48 +75,47 @@ type iTunesTrack struct {
 }
 
 func main() {
-	testing()
-	// fmt.Print("Welcome to Music Metadata Marker")
-	// reader := bufio.NewReader(os.Stdin)
-	// fmt.Print("Enter 1 if you want to enter each songs Apple Music ID, or 2 if you want to use the file name as the song title: ")
-	// choice, _ := reader.ReadString('\n')
-	// choice = strings.TrimSpace(choice)
-	// searchTerm := ""
-	// switch choice {
-	// case "1":
+	fmt.Print("Welcome to Music Metadata Marker")
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Enter 1 if you want to enter each songs Apple Music ID, or 2 if you want to use the file name as the song title: ")
+	choice, _ := reader.ReadString('\n')
+	choice = strings.TrimSpace(choice)
+	searchTerm := ""
+	switch choice {
+	case "1":
 
-	// case "2":
-	// 	fmt.Print("Enter additional search terms to automatically find song ID for all songs: ")
-	// 	searchTerm, _ = reader.ReadString('\n')
-	// case "3":
-	// 	fmt.Print("Enter the correspondingApple Music Album ID: ")
-	// 	searchTerm, _ = reader.ReadString('\n')
-	// default:
-	// 	fmt.Println("Error: invalid option")
-	// 	return
-	// }
-	// fmt.Print("Enter directory to update songs (leave black for Downloads): ")
-	// input, _ := reader.ReadString('\n')
-	// directory := strings.TrimSpace(input)
+	case "2":
+		fmt.Print("Enter additional search terms to automatically find song ID for all songs: ")
+		searchTerm, _ = reader.ReadString('\n')
+	case "3":
+		fmt.Print("Enter the correspondingApple Music Album ID: ")
+		searchTerm, _ = reader.ReadString('\n')
+	default:
+		fmt.Println("Error: invalid option")
+		return
+	}
+	fmt.Print("Enter directory to update songs (leave black for Downloads): ")
+	input, _ := reader.ReadString('\n')
+	directory := strings.TrimSpace(input)
 
-	// if directory == "" {
-	// 	homeDir, _ := os.UserHomeDir()
-	// 	directory = filepath.Join(homeDir, "Downloads")
-	// }
-	// if choice == "3" {
-	// 	dirs, err := listDirectoriesAtDepth(directory, 2)
-	// 	if err != nil {
-	// 		fmt.Printf("Error listing directories: %v\n", err)
-	// 		return
-	// 	}
-	// 	fmt.Println("Directories 2 levels down:")
-	// 	for _, dir := range dirs {
-	// 		fmt.Println(dir) //random here
+	if directory == "" {
+		homeDir, _ := os.UserHomeDir()
+		directory = filepath.Join(homeDir, "Downloads")
+	}
+	if choice == "3" {
+		dirs, err := listDirectoriesAtDepth(directory, 2)
+		if err != nil {
+			fmt.Printf("Error listing directories: %v\n", err)
+			return
+		}
+		fmt.Println("Directories 2 levels down:")
+		for _, dir := range dirs {
+			fmt.Println(dir) //random here
 
-	// 	} //change
-	// 	return
-	// }
-	// metadataUpdate(directory, searchTerm, choice)
+		} //change
+		return
+	}
+	metadataUpdate(directory, searchTerm, choice)
 }
 
 func listDirectoriesAtDepth(root string, targetDepth int) ([]string, error) {
