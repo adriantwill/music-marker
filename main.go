@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -75,47 +76,38 @@ type iTunesTrack struct {
 }
 
 func main() {
+	homeDir, _ := os.UserHomeDir()
+	directory := filepath.Join(homeDir, "Downloads")
+	if len(os.Args) > 1 {
+		directory = strings.TrimSpace(os.Args[1])
+	}
 	fmt.Print("Welcome to Music Metadata Marker")
+	info, err := os.Stat(directory)
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Enter 1 if you want to enter each songs Apple Music ID, or 2 if you want to use the file name as the song title: ")
-	choice, _ := reader.ReadString('\n')
-	choice = strings.TrimSpace(choice)
-	searchTerm := ""
-	switch choice {
-	case "1":
-
-	case "2":
-		fmt.Print("Enter additional search terms to automatically find song ID for all songs: ")
-		searchTerm, _ = reader.ReadString('\n')
-	case "3":
-		fmt.Print("Enter the correspondingApple Music Album ID: ")
-		searchTerm, _ = reader.ReadString('\n')
-	default:
-		fmt.Println("Error: invalid option")
-		return
-	}
-	fmt.Print("Enter directory to update songs (leave black for Downloads): ")
-	input, _ := reader.ReadString('\n')
-	directory := strings.TrimSpace(input)
-
-	if directory == "" {
-		homeDir, _ := os.UserHomeDir()
-		directory = filepath.Join(homeDir, "Downloads")
-	}
-	if choice == "3" {
-		dirs, err := listDirectoriesAtDepth(directory, 2)
-		if err != nil {
-			fmt.Printf("Error listing directories: %v\n", err)
-			return
+	for {
+		info, err = os.Stat(directory)
+		if err == nil || (!info.IsDir() && strings.ToLower(filepath.Ext(directory)) == ".m4a") {
+			break
 		}
-		fmt.Println("Directories 2 levels down:")
-		for _, dir := range dirs {
-			fmt.Println(dir) //random here
-
-		} //change
-		return
+		fmt.Print("Enter a valid directory or .m4a file path: ")
+		directory, _ := reader.ReadString('\n')
+		directory = strings.TrimSpace(strings.ToLower(directory))
 	}
-	metadataUpdate(directory, searchTerm, choice)
+	fmt.Print("Enter how many songs processed before serach term pre prompted (leave blank for entire directory): ")
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(strings.ToLower(input))
+	n, err := strconv.Atoi(input)
+	for {
+		n, err = strconv.Atoi(input)
+		if err != nil {
+			fmt.Println("Please enter a valid number.")
+			continue
+		}
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(strings.ToLower(input))
+		break
+	}
+	metadataUpdate(directory, n)
 }
 
 func listDirectoriesAtDepth(root string, targetDepth int) ([]string, error) {
@@ -143,7 +135,7 @@ func listDirectoriesAtDepth(root string, targetDepth int) ([]string, error) {
 	return dirs, nil
 }
 
-func metadataUpdate(dir string, searchTerm string, choice string) {
+func metadataUpdate(dir string, n int) {
 	choice = strings.TrimSpace(choice)
 
 	matches, err := filepath.Glob(filepath.Join(dir, "*.m4a"))
@@ -155,33 +147,40 @@ func metadataUpdate(dir string, searchTerm string, choice string) {
 	fmt.Printf("Found %d files to process\n\n", len(matches))
 
 	for i, m4aFile := range matches {
+		reader := bufio.NewReader(os.Stdin)
+		// baseName := filepath.Base(m4aFile)
+		searchTerm := "" //strings.TrimSuffix(baseName, ".m4a")
+		if i == 0 || (n > 0 && i%n == 0) {
+			fmt.Print("Enter an Album or Song ID to find songs under, or a string to search for (leave blank to serach just using the file's name)")
+			choice, _ := reader.ReadString('\n')
+			searchTerm = strings.TrimSpace(choice)
+		}
 		fmt.Printf("=== Processing file %d/%d ===\n", i+1, len(matches))
 		fmt.Printf("File: %s\n", filepath.Base(m4aFile))
-		baseName := filepath.Base(m4aFile)
-		songTitle := strings.TrimSuffix(baseName, ".m4a")
-		if len(songTitle) >= 2 {
-			songTitle = strings.TrimSpace(songTitle[2:])
-		}
+		// if len(songTitle) >= 2 {
+		// 	songTitle = strings.TrimSpace(songTitle[2:])
+		// }
 
-		fmt.Printf("Song title: %s\n", songTitle)
+		fmt.Printf("Song title: %s\n", searchTerm)
+		resp, err := http.Get("https://itunes.apple.com/lookup?id=99 lil baby")
 		songID := ""
-		if choice == "1" {
-			fmt.Print("Enter song ID: ")
-			reader := bufio.NewReader(os.Stdin)
-			songID, _ = reader.ReadString('\n')
-			songID = strings.TrimSpace(songID)
-			if songID == "" {
-				fmt.Println("Skipping (no artist provided)")
-				continue
-			}
-		} else {
-			songID, err = extractSongIDFromSearch(songTitle, searchTerm)
-			if err != nil {
-				fmt.Printf("Search failed: %v\n", err)
-				return
-			}
-			fmt.Printf("Found song ID: %s\n", songID)
-		}
+		// if choice == "1" {
+		// 	fmt.Print("Enter song ID: ")
+		// 	reader := bufio.NewReader(os.Stdin)
+		// 	songID, _ = reader.ReadString('\n')
+		// 	songID = strings.TrimSpace(songID)
+		// 	if songID == "" {
+		// 		fmt.Println("Skipping (no artist provided)")
+		// 		continue
+		// 	}
+		// } else {
+		// 	songID, err = extractSongIDFromSearch(songTitle, searchTerm)
+		// 	if err != nil {
+		// 		fmt.Printf("Search failed: %v\n", err)
+		// 		return
+		// 	}
+		// 	fmt.Printf("Found song ID: %s\n", songID)
+		// }
 
 		scraped, err := getMetadataFromiTunes(songID)
 		if err != nil {
