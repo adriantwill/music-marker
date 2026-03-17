@@ -81,19 +81,19 @@ func main() {
 	if len(os.Args) > 1 {
 		directory = strings.TrimSpace(os.Args[1])
 	}
-	fmt.Print("Welcome to Music Metadata Marker")
 	info, err := os.Stat(directory)
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		info, err = os.Stat(directory)
-		if err == nil || (!info.IsDir() && strings.ToLower(filepath.Ext(directory)) == ".m4a") {
-			break
-		}
-		fmt.Print("Enter a valid directory or .m4a file path: ")
-		directory, _ := reader.ReadString('\n')
-		directory = strings.TrimSpace(strings.ToLower(directory))
+	matches, _ := filepath.Glob(filepath.Join(directory, "*.m4a"))
+	if err == nil || (info.IsDir() && len(matches) < 1) {
+		fmt.Print("Enter a valid directory")
+		return
 	}
-	fmt.Print("Enter how many songs processed before serach term pre prompted (leave blank for entire directory): ")
+	if !info.IsDir() && strings.ToLower(filepath.Ext(directory)) == ".m4a" {
+		fmt.Print("Enter a valid .m4a file path")
+		return
+	}
+	fmt.Print("Welcome to Music Metadata Marker")
+
+	fmt.Print("Enter how many songs processed before serach term prompted (leave blank for entire directory): ")
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(strings.ToLower(input))
 	n, err := strconv.Atoi(input)
@@ -136,15 +136,9 @@ func listDirectoriesAtDepth(root string, targetDepth int) ([]string, error) {
 	return dirs, nil
 }
 
-func metadataUpdate(dir string, n int) {
-	choice = strings.TrimSpace(choice)
+func metadataUpdate(dir string, n bool) {
+	// choice = strings.TrimSpace(choice)
 
-	matches, err := filepath.Glob(filepath.Join(dir, "*.m4a"))
-	if err != nil || len(matches) == 0 {
-		println(dir)
-		fmt.Println("No m4a files found in target directory")
-		return
-	}
 	fmt.Printf("Found %d files to process\n\n", len(matches))
 
 	for i, m4aFile := range matches {
@@ -155,6 +149,20 @@ func metadataUpdate(dir string, n int) {
 			fmt.Print("Enter an Album or Song ID to find songs under, or a string to search for (leave blank to serach just using the file's name)")
 			choice, _ := reader.ReadString('\n')
 			searchTerm = strings.TrimSpace(choice)
+			resp, err := http.Get("https://itunes.apple.com/lookup?id=%s&entity=song", info)
+			if err != nil {
+				fmt.Printf("Error fetching metadata: %v\n", err)
+				continue
+			}
+			defer resp.Body.Close()
+			var result iTunesResponse
+			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+				fmt.Printf("Error decoding response: %v\n", err)
+				continue
+			}
+			if result.ResultCount < 2 {
+				//
+			}
 		}
 		fmt.Printf("=== Processing file %d/%d ===\n", i+1, len(matches))
 		fmt.Printf("File: %s\n", filepath.Base(m4aFile))
@@ -163,7 +171,6 @@ func metadataUpdate(dir string, n int) {
 		// }
 
 		fmt.Printf("Song title: %s\n", searchTerm)
-		resp, err := http.Get("https://itunes.apple.com/lookup?id=99 lil baby")
 		songID := ""
 		// if choice == "1" {
 		// 	fmt.Print("Enter song ID: ")
