@@ -104,6 +104,7 @@ func main() {
 			continue
 		}
 		input, _ := reader.ReadString('\n')
+		//trims input
 		input = strings.TrimSpace(strings.ToLower(input))
 		break
 	}
