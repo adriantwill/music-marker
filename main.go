@@ -84,7 +84,7 @@ func main() {
 	info, err := os.Stat(directory)
 	matches, _ := filepath.Glob(filepath.Join(directory, "*.m4a"))
 	if err == nil || (info.IsDir() && len(matches) < 1) {
-		fmt.Print("Enter a valid directory")
+		fmt.Print("Enter a valid directory with m4a files")
 		return
 	}
 	if !info.IsDir() && strings.ToLower(filepath.Ext(directory)) == ".m4a" {
@@ -93,9 +93,6 @@ func main() {
 	}
 	fmt.Print("Welcome to Music Metadata Marker")
 
-	fmt.Print("Enter how many songs processed before serach term prompted (leave blank for entire directory): ")
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(strings.ToLower(input))
 	n, err := strconv.Atoi(input)
 	for {
 		n, err = strconv.Atoi(input)
@@ -108,7 +105,7 @@ func main() {
 		input = strings.TrimSpace(strings.ToLower(input))
 		break
 	}
-	metadataUpdate(directory, n)
+	metadataUpdate(directory, matches)
 }
 
 func listDirectoriesAtDepth(root string, targetDepth int) ([]string, error) {
@@ -136,32 +133,39 @@ func listDirectoriesAtDepth(root string, targetDepth int) ([]string, error) {
 	return dirs, nil
 }
 
-func metadataUpdate(dir string, n bool) {
+func metadataUpdate(dir string, matches []string) {
 	// choice = strings.TrimSpace(choice)
-
+	repeat := true
 	fmt.Printf("Found %d files to process\n\n", len(matches))
 
 	for i, m4aFile := range matches {
 		reader := bufio.NewReader(os.Stdin)
 		// baseName := filepath.Base(m4aFile)
 		searchTerm := "" //strings.TrimSuffix(baseName, ".m4a")
-		if i == 0 || (n > 0 && i%n == 0) {
+		if repeat {
 			fmt.Print("Enter an Album or Song ID to find songs under, or a string to search for (leave blank to serach just using the file's name)")
 			choice, _ := reader.ReadString('\n')
 			searchTerm = strings.TrimSpace(choice)
-			resp, err := http.Get("https://itunes.apple.com/lookup?id=%s&entity=song", info)
-			if err != nil {
-				fmt.Printf("Error fetching metadata: %v\n", err)
-				continue
-			}
-			defer resp.Body.Close()
 			var result iTunesResponse
-			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-				fmt.Printf("Error decoding response: %v\n", err)
-				continue
+			if isASCIIDigitsOnly(searchTerm) {
+				resp, err := http.Get(fmt.Sprintf("https://itunes.apple.com/lookup?id=%s&entity=song", searchTerm))
+				if err != nil {
+					fmt.Printf("Error fetching metadata: %v\n", err)
+					continue
+				}
+				defer resp.Body.Close()
+				if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+					fmt.Printf("Error decoding response: %v\n", err)
+					continue
+				}
 			}
-			if result.ResultCount < 2 {
-				//
+			if result.ResultCount != 1 {
+				fmt.Print("Re prompt for every file (Y/n): ")
+				input, _ := reader.ReadString('\n')
+				input = strings.TrimSpace(strings.ToLower(input))
+				if input == "n" || input == "no" {
+					repeat = false
+				}
 			}
 		}
 		fmt.Printf("=== Processing file %d/%d ===\n", i+1, len(matches))
@@ -331,6 +335,18 @@ func normalizeAppleSearchTerm(songTitle, artist string) string {
 func encodeAppleSearchTerm(searchTerm string) string {
 	encoded := url.QueryEscape(searchTerm)
 	return strings.ReplaceAll(encoded, "+", "%20")
+}
+
+func isASCIIDigitsOnly(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func getMetadataFromiTunes(songID string) (ScrapedData, error) {
