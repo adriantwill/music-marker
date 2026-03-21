@@ -145,13 +145,15 @@ func metadataUpdate(dir string, matches []string) {
 
 	for i, m4aFile := range matches {
 		reader := bufio.NewReader(os.Stdin)
-		// baseName := filepath.Base(m4aFile)
-		searchTerm := "" //strings.TrimSuffix(baseName, ".m4a")
+		baseName := filepath.Base(m4aFile)
+		searchTerm := strings.TrimSuffix(baseName, ".m4a")
+		var result iTunesResponse
 		if repeat {
 			fmt.Print("Enter an Album or Song ID to find songs under, or a string to search for (leave blank to serach just using the file's name)")
 			choice, _ := reader.ReadString('\n')
-			searchTerm = strings.TrimSpace(choice)
-			var result iTunesResponse
+			if choice != "\n" {
+				searchTerm = strings.TrimSpace(choice)
+			}
 			if isASCIIDigitsOnly(searchTerm) {
 				resp, err := http.Get(fmt.Sprintf("https://itunes.apple.com/lookup?id=%s&entity=song", searchTerm))
 				if err != nil {
@@ -173,6 +175,18 @@ func metadataUpdate(dir string, matches []string) {
 				}
 			}
 		}
+		switch result.ResultCount {
+		case 0:
+
+			songID, err = extractSongIDFromSearch(searchTerm)
+			if err != nil {
+				fmt.Printf("Search failed: %v\n", err)
+				return
+			}
+			fmt.Printf("Found song ID: %s\n", songID)
+		case 1:
+		default:
+		}
 		fmt.Printf("=== Processing file %d/%d ===\n", i+1, len(matches))
 		fmt.Printf("File: %s\n", filepath.Base(m4aFile))
 		// if len(songTitle) >= 2 {
@@ -192,15 +206,6 @@ func metadataUpdate(dir string, matches []string) {
 		// 	}
 		// } else {
 		// }
-		if result.ResultCount == 0 {
-			songID, err = extractSongIDFromSearch(songTitle, searchTerm)
-			if err != nil {
-				fmt.Printf("Search failed: %v\n", err)
-				return
-			}
-			fmt.Printf("Found song ID: %s\n", songID)
-		}
-
 		scraped, err := getMetadataFromiTunes(songID)
 		if err != nil {
 			fmt.Printf("Error fetching metadata: %v\n", err)
@@ -299,7 +304,7 @@ func getLyrics(song string, artist string) string {
 	return ""
 }
 
-func extractSongIDFromSearch(songTitle, artist string) (string, error) {
+func extractSongIDFromSearch(songTitle string) (string, error) {
 	var songID string
 	var foundResult bool
 
@@ -315,7 +320,7 @@ func extractSongIDFromSearch(songTitle, artist string) (string, error) {
 			}
 		}
 	})
-	searchTerm := normalizeAppleSearchTerm(songTitle, artist)
+	searchTerm := normalizeAppleSearchTerm(songTitle)
 	searchURL := fmt.Sprintf("https://music.apple.com/us/search?term=%s", encodeAppleSearchTerm(searchTerm))
 	fmt.Println(searchURL)
 
@@ -331,10 +336,9 @@ func extractSongIDFromSearch(songTitle, artist string) (string, error) {
 	return songID, nil
 }
 
-func normalizeAppleSearchTerm(songTitle, artist string) string {
+func normalizeAppleSearchTerm(songTitle string) string {
 	songTitle = strings.ReplaceAll(songTitle, "+", " ")
-	artist = strings.ReplaceAll(artist, "+", " ")
-	combined := strings.TrimSpace(songTitle + " " + artist)
+	combined := strings.TrimSpace(songTitle)
 	combined = strings.NewReplacer("(", " ", ")", " ").Replace(combined)
 	return strings.Join(strings.Fields(combined), " ")
 }
