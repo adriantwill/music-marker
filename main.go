@@ -10,11 +10,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gocolly/colly/v2"
+	"golang.org/x/text/runes"
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
 )
 
 type ExplicitType string
@@ -160,7 +165,7 @@ func metadataUpdate(dir string, matches []string) {
 				}
 			}
 			if result.ResultCount != 1 {
-				fmt.Print("Re prompt for every file (Y/n): ")
+				fmt.Print("Re prompt for every file (Search via file name) (Y/n): ")
 				input, _ := reader.ReadString('\n')
 				input = strings.TrimSpace(strings.ToLower(input))
 				if input == "n" || input == "no" {
@@ -186,13 +191,15 @@ func metadataUpdate(dir string, matches []string) {
 		// 		continue
 		// 	}
 		// } else {
-		// 	songID, err = extractSongIDFromSearch(songTitle, searchTerm)
-		// 	if err != nil {
-		// 		fmt.Printf("Search failed: %v\n", err)
-		// 		return
-		// 	}
-		// 	fmt.Printf("Found song ID: %s\n", songID)
 		// }
+		if result.ResultCount == 0 {
+			songID, err = extractSongIDFromSearch(songTitle, searchTerm)
+			if err != nil {
+				fmt.Printf("Search failed: %v\n", err)
+				return
+			}
+			fmt.Printf("Found song ID: %s\n", songID)
+		}
 
 		scraped, err := getMetadataFromiTunes(songID)
 		if err != nil {
@@ -489,4 +496,15 @@ func processFile(m4aFile string, scraped ScrapedData) error {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 	return nil
+}
+
+func normalizeTitle(title string) string {
+	title, _, _ = transform.String(
+		transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC),
+		title,
+	)
+	title = strings.ToLower(title)
+	title = regexp.MustCompile(`[^a-z0-9 ]+`).ReplaceAllString(title, " ")
+	title = strings.Join(strings.Fields(title), " ")
+	return title
 }
