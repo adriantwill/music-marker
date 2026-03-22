@@ -67,6 +67,7 @@ type iTunesResponse struct {
 type iTunesTrack struct {
 	ArtistName           string `json:"artistName"`
 	ArtistId             int    `json:"artistId"`
+	TrackId              int    `json:"trackId"`
 	CollectionArtistName string `json:"collectionArtistName"`
 	CollectionName       string `json:"collectionName"`
 	TrackName            string `json:"trackName"`
@@ -88,54 +89,20 @@ func main() {
 	}
 	info, err := os.Stat(directory)
 	matches, _ := filepath.Glob(filepath.Join(directory, "*.m4a"))
-	if err == nil || (info.IsDir() && len(matches) < 1) {
+	if err != nil {
 		fmt.Print("Enter a valid directory with m4a files")
 		return
 	}
-	if !info.IsDir() && strings.ToLower(filepath.Ext(directory)) == ".m4a" {
+	if info.IsDir() && len(matches) < 1 {
+		fmt.Print("Enter a valid directory with m4a files")
+		return
+	} else if strings.ToLower(filepath.Ext(directory)) != ".m4a" {
 		fmt.Print("Enter a valid .m4a file path")
 		return
 	}
 	fmt.Print("Welcome to Music Metadata Marker")
-
-	n, err := strconv.Atoi(input)
-	for {
-		n, err = strconv.Atoi(input)
-		if err != nil {
-			fmt.Println("Please enter a valid number.")
-			continue
-		}
-		input, _ := reader.ReadString('\n')
-		//trims input
-		input = strings.TrimSpace(strings.ToLower(input))
-		break
-	}
 	metadataUpdate(directory, matches)
-}
 
-func listDirectoriesAtDepth(root string, targetDepth int) ([]string, error) {
-	var dirs []string
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
-		if !d.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil || rel == "." {
-			return nil
-		}
-		depth := strings.Count(filepath.ToSlash(rel), "/") + 1
-		if depth == targetDepth {
-			dirs = append(dirs, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return dirs, nil
 }
 
 func metadataUpdate(dir string, matches []string) {
@@ -175,38 +142,56 @@ func metadataUpdate(dir string, matches []string) {
 				}
 			}
 		}
+		songID := ""
+		track := iTunesTrack{}
 		switch result.ResultCount {
 		case 0:
-
+			var err error
 			songID, err = extractSongIDFromSearch(searchTerm)
 			if err != nil {
 				fmt.Printf("Search failed: %v\n", err)
 				return
 			}
 			fmt.Printf("Found song ID: %s\n", songID)
+			apiURL := fmt.Sprintf("https://itunes.apple.com/lookup?id=%s", songID)
+			client := &http.Client{Timeout: 10 * time.Second}
+			resp, err := client.Get(apiURL)
+			if err != nil {
+				fmt.Printf("iTunes API request failed: %v\n", err)
+				continue
+			}
+			defer resp.Body.Close()
+
+			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+				fmt.Printf("failed to parse iTunes response: %v\n", err)
+				continue
+			}
+
+			if result.ResultCount == 0 || len(result.Results) == 0 {
+				fmt.Printf("no results from iTunes API for ID %s\n", songID)
+				continue
+			}
+			track = result.Results[0]
 		case 1:
+			track = result.Results[0]
 		default:
+			for _, song := range result.Results {
+				if strings.Contains(song.TrackName, searchTerm) || strings.Contains(searchTerm, song.TrackName) {
+					track = song
+					break
+				}
+			}
+			//TODO web scrape if no track found
+			ids := make(map[string]int)
+			for i, r := range result.Results {
+				ids[strconv.Itoa(r.TrackId)] = i
+			}
+			track = result.Results[matchSongFromWeb(ids)]
 		}
 		fmt.Printf("=== Processing file %d/%d ===\n", i+1, len(matches))
 		fmt.Printf("File: %s\n", filepath.Base(m4aFile))
-		// if len(songTitle) >= 2 {
-		// 	songTitle = strings.TrimSpace(songTitle[2:])
-		// }
-
 		fmt.Printf("Song title: %s\n", searchTerm)
-		songID := ""
-		// if choice == "1" {
-		// 	fmt.Print("Enter song ID: ")
-		// 	reader := bufio.NewReader(os.Stdin)
-		// 	songID, _ = reader.ReadString('\n')
-		// 	songID = strings.TrimSpace(songID)
-		// 	if songID == "" {
-		// 		fmt.Println("Skipping (no artist provided)")
-		// 		continue
-		// 	}
-		// } else {
-		// }
-		scraped, err := getMetadataFromiTunes(songID)
+		scraped, err := getMetadataFromiTunes(track)
 		if err != nil {
 			fmt.Printf("Error fetching metadata: %v\n", err)
 			fmt.Println("Skipping")
@@ -304,6 +289,23 @@ func getLyrics(song string, artist string) string {
 	return ""
 }
 
+func matchSongFromWeb(ids map[string]int) int {
+	c := colly.NewCollector()
+	var songPos int
+	c.OnHTML("ul.some-class", func(e *colly.HTMLElement) {
+		e.ForEach("li", func(_ int, li *colly.HTMLElement) {
+			href := li.ChildAttr(".track-lockup__title.svelte-1o8gcyq a.click-action", "href")
+			fmt.Println(href)
+			if _, after, ok := strings.Cut(href, "?i="); ok {
+				if _, exists := ids[after]; exists {
+					songPos = ids[after]
+				}
+			}
+		})
+	})
+	return songPos
+}
+
 func extractSongIDFromSearch(songTitle string) (string, error) {
 	var songID string
 	var foundResult bool
@@ -321,7 +323,8 @@ func extractSongIDFromSearch(songTitle string) (string, error) {
 		}
 	})
 	searchTerm := normalizeAppleSearchTerm(songTitle)
-	searchURL := fmt.Sprintf("https://music.apple.com/us/search?term=%s", encodeAppleSearchTerm(searchTerm))
+	searchTerm = strings.ReplaceAll(url.QueryEscape(searchTerm), "+", "%20")
+	searchURL := fmt.Sprintf("https://music.apple.com/us/search?term=%s", searchTerm)
 	fmt.Println(searchURL)
 
 	err := c.Visit(searchURL)
@@ -330,7 +333,7 @@ func extractSongIDFromSearch(songTitle string) (string, error) {
 	}
 
 	if !foundResult {
-		return "", fmt.Errorf("no results found for '%s' by '%s'", songTitle, artist)
+		return "", fmt.Errorf("no results found for '%s' by '%s'", songTitle)
 	}
 
 	return songID, nil
@@ -341,11 +344,6 @@ func normalizeAppleSearchTerm(songTitle string) string {
 	combined := strings.TrimSpace(songTitle)
 	combined = strings.NewReplacer("(", " ", ")", " ").Replace(combined)
 	return strings.Join(strings.Fields(combined), " ")
-}
-
-func encodeAppleSearchTerm(searchTerm string) string {
-	encoded := url.QueryEscape(searchTerm)
-	return strings.ReplaceAll(encoded, "+", "%20")
 }
 
 func isASCIIDigitsOnly(s string) bool {
@@ -360,29 +358,10 @@ func isASCIIDigitsOnly(s string) bool {
 	return true
 }
 
-func getMetadataFromiTunes(songID string) (ScrapedData, error) {
+func getMetadataFromiTunes(track iTunesTrack) (ScrapedData, error) {
 	data := ScrapedData{}
-	apiURL := fmt.Sprintf("https://itunes.apple.com/lookup?id=%s", songID)
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(apiURL)
-	if err != nil {
-		return data, fmt.Errorf("iTunes API request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var result iTunesResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return data, fmt.Errorf("failed to parse iTunes response: %w", err)
-	}
-
-	if result.ResultCount == 0 || len(result.Results) == 0 {
-		return data, fmt.Errorf("no results from iTunes API for ID %s", songID)
-	}
-
-	track := result.Results[0]
 	artistId := track.ArtistId
 	artist := getArtistName(artistId)
-
 	data.Title = track.TrackName
 	data.Album = track.CollectionName
 	data.Artist = artist
@@ -392,13 +371,10 @@ func getMetadataFromiTunes(songID string) (ScrapedData, error) {
 	data.TrackLength = track.TrackCount
 	data.DiskNumber = track.DiscNumber
 	data.DiskLength = track.DiscCount
-
 	if track.TrackExplicitness == "explicit" {
 		data.Explicit = Explicit
 	}
-
 	data.Artwork = strings.ReplaceAll(track.ArtworkUrl100, "100x100bb.jpg", "3000x3000bb.jpg")
-
 	return data, nil
 }
 
