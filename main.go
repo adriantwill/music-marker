@@ -87,37 +87,44 @@ func main() {
 	if len(os.Args) > 1 {
 		directory = strings.TrimSpace(os.Args[1])
 	}
-	info, err := os.Stat(directory)
+	_, err := os.Stat(directory)
 	matches, _ := filepath.Glob(filepath.Join(directory, "*.m4a"))
+	if len(matches) < 1 && strings.ToLower(filepath.Ext(directory)) == ".m4a" && err == nil {
+		matches = []string{directory}
+	}
+
 	if err != nil {
 		fmt.Print("Enter a valid directory with m4a files")
 		return
 	}
-	if info.IsDir() && len(matches) < 1 {
-		fmt.Print("Enter a valid directory with m4a files")
-		return
-	} else if strings.ToLower(filepath.Ext(directory)) != ".m4a" {
-		fmt.Print("Enter a valid .m4a file path")
+	if len(matches) < 1 {
+		fmt.Print("Enter a valid m4a file or directory with m4a files")
 		return
 	}
-	fmt.Print("Welcome to Music Metadata Marker")
+	fmt.Print("Welcome to Music Metadata Marker!\n")
 	metadataUpdate(directory, matches)
 
 }
 
 func metadataUpdate(dir string, matches []string) {
-	// choice = strings.TrimSpace(choice)
 	repeat := true
-	fmt.Printf("Found %d files to process\n\n", len(matches))
-
+	reader := bufio.NewReader(os.Stdin)
+	var result iTunesResponse
+	fmt.Print("Re prompt for every file (Search via file name) (Y/n): ")
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(strings.ToLower(input))
+	if input == "n" || input == "no" {
+		repeat = false
+	}
+	fmt.Print("Enter an Album ID to restrict search to a specific albu, or leave blank: \n")
+	choice, _ := reader.ReadString('\n')
+	albumID := strings.TrimSpace(choice)
 	for i, m4aFile := range matches {
-		reader := bufio.NewReader(os.Stdin)
 		baseName := filepath.Base(m4aFile)
 		searchTerm := strings.TrimSuffix(baseName, ".m4a")
-		var result iTunesResponse
 		if repeat {
-			fmt.Print("Enter an Album or Song ID to find songs under, or a string to search for (leave blank to serach just using the file's name)")
-			choice, _ := reader.ReadString('\n')
+			fmt.Print("Enter a specific song ID or a title to search for (leave blank to search using the file name): \n")
+			choice, _ = reader.ReadString('\n')
 			if choice != "\n" {
 				searchTerm = strings.TrimSpace(choice)
 			}
@@ -131,14 +138,6 @@ func metadataUpdate(dir string, matches []string) {
 				if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 					fmt.Printf("Error decoding response: %v\n", err)
 					continue
-				}
-			}
-			if result.ResultCount != 1 {
-				fmt.Print("Re prompt for every file (Search via file name) (Y/n): ")
-				input, _ := reader.ReadString('\n')
-				input = strings.TrimSpace(strings.ToLower(input))
-				if input == "n" || input == "no" {
-					repeat = false
 				}
 			}
 		}
