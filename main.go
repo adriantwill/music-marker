@@ -110,6 +110,7 @@ func metadataUpdate(dir string, matches []string) {
 	repeat := true
 	reader := bufio.NewReader(os.Stdin)
 	var result iTunesResponse
+	var albumResult iTunesResponse
 	fmt.Print("Re prompt for every file (Search via file name) (Y/n): ")
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(strings.ToLower(input))
@@ -119,6 +120,17 @@ func metadataUpdate(dir string, matches []string) {
 	fmt.Print("Enter an Album ID to restrict search to a specific albu, or leave blank: \n")
 	choice, _ := reader.ReadString('\n')
 	albumID := strings.TrimSpace(choice)
+	if albumID != "" {
+		resp, err := http.Get(fmt.Sprintf("https://itunes.apple.com/lookup?id=%s&entity=song", albumID))
+		if err != nil {
+			fmt.Printf("Error fetching metadata, not using albumID: %v\n", err)
+
+		}
+		defer resp.Body.Close()
+		if err := json.NewDecoder(resp.Body).Decode(&albumResult); err != nil {
+			fmt.Printf("Error decoding response, not using albumID: %v\n", err)
+		}
+	}
 	for i, m4aFile := range matches {
 		baseName := filepath.Base(m4aFile)
 		searchTerm := strings.TrimSuffix(baseName, ".m4a")
