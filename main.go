@@ -166,7 +166,7 @@ func metadataUpdate(dir string, matches []string) {
 			fmt.Printf("Found song ID: %s\n", songID)
 			apiURL := fmt.Sprintf("https://itunes.apple.com/lookup?id=%s", songID)
 			client := &http.Client{Timeout: 10 * time.Second}
-			resp, err := client.Get(apiURL)
+			resp, err := client.Get(apiURL) //here
 			if err != nil {
 				fmt.Printf("iTunes API request failed: %v\n", err)
 				continue
