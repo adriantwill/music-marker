@@ -117,7 +117,7 @@ func metadataUpdate(dir string, matches []string) {
 	if input == "n" || input == "no" {
 		repeat = false
 	}
-	fmt.Print("Enter an Album ID to restrict search to a specific albu, or leave blank: \n")
+	fmt.Print("Enter an Album ID to restrict search to a specific album, or leave blank: \n")
 	choice, _ := reader.ReadString('\n')
 	albumID := strings.TrimSpace(choice)
 	if albumID != "" {
@@ -149,7 +149,7 @@ func metadataUpdate(dir string, matches []string) {
 				defer resp.Body.Close()
 				if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 					fmt.Printf("Error decoding response: %v\n", err)
-					continue
+					continue //random
 				}
 			}
 		}
@@ -208,30 +208,9 @@ func metadataUpdate(dir string, matches []string) {
 			fmt.Println("Skipping")
 			continue
 		}
-		if dir != "" {
-			lyrics := getLyrics(scraped.Title, scraped.Artist)
-			args := []string{m4aFile, "--overWrite",
-				"--genre", scraped.Genre,
-				"--year", scraped.Date,
-			}
-			if lyrics != "" {
-				args = append(args, "--lyrics", lyrics)
-			}
-			if scraped.Explicit == Explicit {
-				args = append(args, "--advisory", "explicit")
-			}
-			fmt.Println("Running AtomicParsley...")
-			cmd := exec.Command("AtomicParsley", args...)
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				fmt.Printf("AtomicParsley failed: %v\nOutput: %s", err, output)
-				return
-			}
-		} else {
-			if err := processFile(m4aFile, scraped); err != nil {
-				fmt.Printf("Error processing file: %v\n\n", err)
-				continue
-			}
+		if err := processFile(m4aFile, scraped); err != nil {
+			fmt.Printf("Error processing file: %v\n\n", err)
+			continue
 		}
 		fmt.Printf("✓ Successfully processed\n\n")
 	}
