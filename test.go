@@ -5,12 +5,17 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	mp4 "github.com/abema/go-mp4"
 	"github.com/sunfish-shogi/bufseekio"
 )
 
+// TODO the image function might not be working
 func testing() {
+	homeDir, _ := os.UserHomeDir()
+	directory := filepath.Join(homeDir, "Downloads")
+
 	inputPath := "/Users/adrianwill/Music/Music/Media.localized/Music/O A/test/test.temp.m4a"
 	inputFile, err := os.Open(inputPath)
 	if err != nil {

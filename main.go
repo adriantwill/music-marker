@@ -82,6 +82,8 @@ type iTunesTrack struct {
 }
 
 func main() {
+	testing()
+	return
 	homeDir, _ := os.UserHomeDir()
 	directory := filepath.Join(homeDir, "Downloads")
 	if len(os.Args) > 1 {
