@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	mp4 "github.com/abema/go-mp4"
@@ -12,24 +13,24 @@ import (
 )
 
 // TODO the image function might not be working
-func testing() {
-	homeDir, _ := os.UserHomeDir()
-	directory := filepath.Join(homeDir, "Downloads")
+func testing(dir string, title string, artist string, genre string,
+	year string, album string, trackNum int, trackLength int, diskNum int,
+	diskLength int, artwork string, lyrics string, explicit int, collectionArtist string) error {
+	// homeDir, _ := os.UserHomeDir()
+	// directory := filepath.Join(homeDir, "Downloads")
 
-	inputPath := "/Users/adrianwill/Music/Music/Media.localized/Music/O A/test/test.temp.m4a"
-	inputFile, err := os.Open(inputPath)
+	inputFile, err := os.Open(dir)
 	if err != nil {
 		fmt.Println(err)
-		return
+		return err
 	}
 	defer inputFile.Close()
 
-	outputPath := "/Users/adrianwill/Music/Music/Media.localized/Music/O A/test/test.m4a"
+	outputPath := filepath.Join(os.TempDir(), "TEMP.m4a")
 	outputFile, err := os.Create(outputPath)
 	if err != nil {
-		return
+		return err
 	}
-	defer outputFile.Close()
 	r := bufseekio.NewReadSeeker(inputFile, 128*1024, 4)
 	w := mp4.NewWriter(outputFile)
 	titleKey := mp4.BoxType{0xa9, 'n', 'a', 'm'}
@@ -54,7 +55,7 @@ func testing() {
 	foundArtwork := false
 	foundLyrics := false
 	foundAlbumArtist := false
-	_, err = mp4.ReadBoxStructure(r, func(h *mp4.ReadHandle) (any, error) {
+	_, writeErr := mp4.ReadBoxStructure(r, func(h *mp4.ReadHandle) (any, error) {
 
 		if !h.BoxInfo.IsSupportedType() || h.BoxInfo.Type == mp4.BoxTypeMdat() {
 			return nil, w.CopyBox(r, &h.BoxInfo)
@@ -75,39 +76,50 @@ func testing() {
 				key := h.Path[lenPath-2]
 				switch key {
 				case titleKey:
-					setData(d, mp4.DataTypeStringUTF8, []byte("Golden Girls"), &foundTitle)
+					setData(d, mp4.DataTypeStringUTF8, []byte(title), &foundTitle)
 				case artistKey:
-					setData(d, mp4.DataTypeStringUTF8, []byte("Frank Ocean, Tyler"), &foundArtist)
+					setData(d, mp4.DataTypeStringUTF8, []byte(artist), &foundArtist)
 				case albumKey:
-					setData(d, mp4.DataTypeStringUTF8, []byte("chanel orange"), &foundAlbum)
+					setData(d, mp4.DataTypeStringUTF8, []byte(album), &foundAlbum)
 				case genreKey:
-					setData(d, mp4.DataTypeStringUTF8, []byte("alternative"), &foundGenre)
+					setData(d, mp4.DataTypeStringUTF8, []byte(genre), &foundGenre)
 				case dateKey:
-					setData(d, mp4.DataTypeStringUTF8, []byte("2015-02-13T12:00:00Z"), &foundDate)
+					setData(d, mp4.DataTypeStringUTF8, []byte(year), &foundDate)
 				case trackKey:
-					setData(d, mp4.DataTypeBinary, []byte{0x00, 0x00, 0x00, 0x03, 0x00, 0x0C, 0x00, 0x00}, &foundTrack)
+					setData(d, mp4.DataTypeBinary, []byte{0x00, 0x00, 0x00, byte(trackNum), 0x00, byte(trackLength), 0x00, 0x00}, &foundTrack)
 				case diskKey:
-					setData(d, mp4.DataTypeBinary, []byte{0x00, 0x00, 0x00, 0x01, 0x00, 0x01}, &foundDisk)
+					setData(d, mp4.DataTypeBinary, []byte{0x00, 0x00, 0x00, byte(diskNum), 0x00, byte(diskLength)}, &foundDisk)
 				case ratingKey:
-					setData(d, mp4.DataTypeBinary, []byte{0x01}, &foundRating)
+					if explicit == 1 {
+						setData(d, mp4.DataTypeBinary, []byte{byte(explicit)}, &foundRating)
+					}
+					foundRating = true
 				case artworkKey:
-					resp, err := http.Get("https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/27/9a/8c/279a8c66-9914-add2-9c7f-912f2946fb8a/15UMGIM08570.rgb.jpg/3000x3000bb.jpg")
-					if err != nil {
-						return nil, err
+					if artwork != "" {
+						resp, err := http.Get(artwork)
+						if err != nil {
+							return nil, err
+						}
+						defer resp.Body.Close()
+						if resp.StatusCode != http.StatusOK {
+							return nil, fmt.Errorf("artwork download failed: %s", resp.Status)
+						}
+						imgBytes, err := io.ReadAll(resp.Body)
+						if err != nil {
+							return nil, err
+						}
+						setData(d, mp4.DataTypeBinary, imgBytes, &foundArtwork)
 					}
-					defer resp.Body.Close()
-					if resp.StatusCode != http.StatusOK {
-						return nil, fmt.Errorf("artwork download failed: %s", resp.Status)
-					}
-					imgBytes, err := io.ReadAll(resp.Body)
-					if err != nil {
-						return nil, err
-					}
-					setData(d, mp4.DataTypeBinary, imgBytes, &foundArtwork)
 				case lyricsKey:
-					setData(d, mp4.DataTypeStringUTF8, []byte("2015-02-13T12:00:00Z"), &foundLyrics)
+					if lyrics != "" {
+						setData(d, mp4.DataTypeStringUTF8, []byte(lyrics), &foundLyrics)
+					}
 				case albumArtistKey:
-					setData(d, mp4.DataTypeStringUTF8, []byte("Frank Ocean"), &foundAlbumArtist)
+					if collectionArtist != "" {
+						setData(d, mp4.DataTypeStringUTF8, []byte(collectionArtist), &foundAlbumArtist)
+					} else {
+						setData(d, mp4.DataTypeStringUTF8, []byte(artist), &foundAlbumArtist)
+					}
 				}
 			}
 		}
@@ -119,47 +131,47 @@ func testing() {
 		}
 		if h.BoxInfo.Type == mp4.BoxTypeIlst() {
 			if !foundTitle {
-				if err := createBox(h, titleKey, w, mp4.DataTypeStringUTF8, []byte("Golden Girls"), &foundTitle); err != nil {
+				if err := createBox(h, titleKey, w, mp4.DataTypeStringUTF8, []byte(title), &foundTitle); err != nil {
 					return nil, err
 				}
 			}
 			if !foundArtist {
-				if err := createBox(h, artistKey, w, mp4.DataTypeStringUTF8, []byte("Frank Ocean, Tyler"), &foundArtist); err != nil {
+				if err := createBox(h, artistKey, w, mp4.DataTypeStringUTF8, []byte(artist), &foundArtist); err != nil {
 					return nil, err
 				}
 			}
 			if !foundAlbum {
-				if err := createBox(h, albumKey, w, mp4.DataTypeStringUTF8, []byte("chanel orange"), &foundAlbum); err != nil {
+				if err := createBox(h, albumKey, w, mp4.DataTypeStringUTF8, []byte(album), &foundAlbum); err != nil {
 					return nil, err
 				}
 			}
 			if !foundGenre {
-				if err := createBox(h, genreKey, w, mp4.DataTypeStringUTF8, []byte("alternative"), &foundGenre); err != nil {
+				if err := createBox(h, genreKey, w, mp4.DataTypeStringUTF8, []byte(genre), &foundGenre); err != nil {
 					return nil, err
 				}
 			}
 			if !foundDate {
-				if err := createBox(h, dateKey, w, mp4.DataTypeStringUTF8, []byte("2015-02-13T12:00:00Z"), &foundDate); err != nil {
+				if err := createBox(h, dateKey, w, mp4.DataTypeStringUTF8, []byte(year), &foundDate); err != nil {
 					return nil, err
 				}
 			}
 			if !foundTrack {
-				if err := createBox(h, trackKey, w, mp4.DataTypeBinary, []byte{0x00, 0x00, 0x00, 0x03, 0x00, 0x0C, 0x00, 0x00}, &foundTrack); err != nil {
+				if err := createBox(h, trackKey, w, mp4.DataTypeBinary, []byte{0x00, 0x00, 0x00, byte(trackNum), 0x00, byte(trackLength), 0x00, 0x00}, &foundTrack); err != nil {
 					return nil, err
 				}
 			}
 			if !foundDisk {
-				if err := createBox(h, diskKey, w, mp4.DataTypeBinary, []byte{0x00, 0x00, 0x00, 0x01, 0x00, 0x01}, &foundDisk); err != nil {
+				if err := createBox(h, diskKey, w, mp4.DataTypeBinary, []byte{0x00, 0x00, 0x00, byte(diskNum), 0x00, byte(diskLength)}, &foundDisk); err != nil {
 					return nil, err
 				}
 			}
-			if !foundRating {
-				if err := createBox(h, ratingKey, w, mp4.DataTypeBinary, []byte{0x01}, &foundRating); err != nil {
+			if !foundRating && explicit == 1 {
+				if err := createBox(h, ratingKey, w, mp4.DataTypeBinary, []byte{byte(explicit)}, &foundRating); err != nil {
 					return nil, err
 				}
 			}
-			if !foundArtwork {
-				resp, err := http.Get("https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/27/9a/8c/279a8c66-9914-add2-9c7f-912f2946fb8a/15UMGIM08570.rgb.jpg/3000x3000bb.jpg")
+			if !foundArtwork && artwork != "" {
+				resp, err := http.Get(artwork)
 				if err != nil {
 					return nil, err
 				}
@@ -175,13 +187,13 @@ func testing() {
 					return nil, err
 				}
 			}
-			if !foundLyrics {
-				if err := createBox(h, lyricsKey, w, mp4.DataTypeStringUTF8, []byte("2015-02-13T12:00:00Z"), &foundLyrics); err != nil {
+			if !foundLyrics && lyrics != "" {
+				if err := createBox(h, lyricsKey, w, mp4.DataTypeStringUTF8, []byte(lyrics), &foundLyrics); err != nil {
 					return nil, err
 				}
 			}
-			if !foundAlbumArtist {
-				if err := createBox(h, albumArtistKey, w, mp4.DataTypeStringUTF8, []byte("Frank Ocean"), &foundAlbumArtist); err != nil {
+			if !foundAlbumArtist && collectionArtist != "" {
+				if err := createBox(h, albumArtistKey, w, mp4.DataTypeStringUTF8, []byte(collectionArtist), &foundAlbumArtist); err != nil {
 					return nil, err
 				}
 			}
@@ -191,7 +203,7 @@ func testing() {
 	})
 	fmt.Println(err)
 	fmt.Println("foundTitle:", foundTitle)
-	fmt.Println("foundArtist:", foundArtist)
+	fmt.Println("foundArtist:", &foundArtist)
 	fmt.Println("foundAlbum:", foundAlbum)
 	fmt.Println("foundGenre:", foundGenre)
 	fmt.Println("foundDate:", foundDate)
@@ -201,6 +213,24 @@ func testing() {
 	fmt.Println("foundArtwork:", foundArtwork)
 	fmt.Println("foundLyrics:", foundLyrics)
 	fmt.Println("foundAlbumArtist:", foundAlbumArtist)
+	closeErr := outputFile.Close()
+
+	if writeErr != nil {
+		return fmt.Errorf("write mp4 metadata: %w", writeErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close output file: %w", closeErr)
+	}
+	openCmd := exec.Command("open", outputPath)
+	if err := openCmd.Run(); err != nil {
+		fmt.Println("failed to open file: %w", err)
+		return err
+	}
+	if err := os.Remove(dir); err != nil {
+		fmt.Println("failed to remove file: %w", err)
+		return err
+	}
+	return nil
 }
 
 func setData(d *mp4.Data, dt uint32, b []byte, foundBool *bool) {
