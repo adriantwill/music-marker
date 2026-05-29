@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net/http"
@@ -55,8 +56,19 @@ func testing(dir string, title string, artist string, genre string,
 	foundArtwork := false
 	foundLyrics := false
 	foundAlbumArtist := false
+	mdatFound := false
+	var oldMdatOffset, newMdatOffset int64
 	_, writeErr := mp4.ReadBoxStructure(r, func(h *mp4.ReadHandle) (any, error) {
 
+		if h.BoxInfo.Type == mp4.BoxTypeMdat() {
+			mdatFound = true
+			oldMdatOffset = int64(h.BoxInfo.Offset)
+			pos, err := w.Seek(0, io.SeekCurrent)
+			if err != nil {
+				return nil, err
+			}
+			newMdatOffset = pos
+		}
 		if !h.BoxInfo.IsSupportedType() || h.BoxInfo.Type == mp4.BoxTypeMdat() {
 			return nil, w.CopyBox(r, &h.BoxInfo)
 		}
@@ -221,6 +233,11 @@ func testing(dir string, title string, artist string, genre string,
 	if closeErr != nil {
 		return fmt.Errorf("close output file: %w", closeErr)
 	}
+	if mdatFound {
+		if err := fixChunkOffsets(outputPath, newMdatOffset-oldMdatOffset); err != nil {
+			return fmt.Errorf("fix chunk offsets: %w", err)
+		}
+	}
 	openCmd := exec.Command("open", outputPath)
 	if err := openCmd.Run(); err != nil {
 		fmt.Println("failed to open file: %w", err)
@@ -231,6 +248,82 @@ func testing(dir string, title string, artist string, genre string,
 		return err
 	}
 	return nil
+}
+
+func fixChunkOffsets(path string, delta int64) error {
+	if delta == 0 {
+		return nil
+	}
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = mp4.ReadBoxStructure(f, func(h *mp4.ReadHandle) (any, error) {
+		switch h.BoxInfo.Type {
+		case mp4.BoxTypeStco():
+			box, _, err := h.ReadPayload()
+			if err != nil {
+				return nil, err
+			}
+			stco := box.(*mp4.Stco)
+			start := int64(h.BoxInfo.Offset + h.BoxInfo.HeaderSize + 8)
+			for i, offset := range stco.ChunkOffset {
+				newOffset := int64(offset) + delta
+				if newOffset < 0 || newOffset > int64(^uint32(0)) {
+					return nil, fmt.Errorf("stco offset out of range: %d", newOffset)
+				}
+				var b [4]byte
+				binary.BigEndian.PutUint32(b[:], uint32(newOffset))
+				if _, err := f.WriteAt(b[:], start+int64(i*4)); err != nil {
+					return nil, err
+				}
+			}
+			return nil, nil
+		case mp4.BoxTypeCo64():
+			box, _, err := h.ReadPayload()
+			if err != nil {
+				return nil, err
+			}
+			co64 := box.(*mp4.Co64)
+			start := int64(h.BoxInfo.Offset + h.BoxInfo.HeaderSize + 8)
+			for i, offset := range co64.ChunkOffset {
+				newOffset, err := addOffsetDelta(offset, delta)
+				if err != nil {
+					return nil, err
+				}
+				var b [8]byte
+				binary.BigEndian.PutUint64(b[:], newOffset)
+				if _, err := f.WriteAt(b[:], start+int64(i*8)); err != nil {
+					return nil, err
+				}
+			}
+			return nil, nil
+		}
+		if h.BoxInfo.IsSupportedType() {
+			if _, err := h.Expand(); err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
+	})
+	return err
+}
+
+func addOffsetDelta(offset uint64, delta int64) (uint64, error) {
+	if delta < 0 {
+		decrease := uint64(-delta)
+		if offset < decrease {
+			return 0, fmt.Errorf("co64 offset out of range: %d", int64(offset)+delta)
+		}
+		return offset - decrease, nil
+	}
+	increase := uint64(delta)
+	if ^uint64(0)-offset < increase {
+		return 0, fmt.Errorf("co64 offset out of range: %d", offset)
+	}
+	return offset + increase, nil
 }
 
 func setData(d *mp4.Data, dt uint32, b []byte, foundBool *bool) {
