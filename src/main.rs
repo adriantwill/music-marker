@@ -1,5 +1,5 @@
 use clap::Parser;
-use mp4ameta::Tag;
+use mp4ameta::{Img, Tag};
 use serde::Deserialize;
 use std::env;
 use std::error::Error;
@@ -12,11 +12,11 @@ struct Args {
 }
 #[derive(Deserialize)]
 struct SongResult {
-    results: Vec<ItunesTrack>,
+    results: Vec<Song>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ItunesTrack {
+struct Song {
     artist_name: String,
     artist_id: u64,
     track_id: u64,
@@ -26,10 +26,10 @@ struct ItunesTrack {
     primary_genre_name: String,
     release_date: String,
     track_explicitness: String,
-    track_number: u32,
-    track_count: u32,
-    disc_number: u32,
-    disc_count: u32,
+    track_number: u16,
+    track_count: u16,
+    disc_number: u16,
+    disc_count: u16,
     artwork_url_100: String,
 }
 
@@ -40,32 +40,48 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn walk_dir() -> Result<(), Box<dyn Error>> {
     let current_dir = env::current_dir().expect("no directory");
     let args = Args::parse();
+    let song_id = args.id;
     for entry in WalkDir::new(current_dir) {
         let entry = entry?;
         if entry.path().extension() == Some(OsStr::new("m4a"))
             && let path = entry.path().to_path_buf()
         {
-            get_song(args.id)?;
-            set_atributes(&path);
+            print!("{:?}", path);
+            let res: SongResult = reqwest::blocking::get(format!(
+                "https://itunes.apple.com/lookup?id={song_id}&entity=song"
+            ))?
+            .json()?;
+            if res.results.len() != 1 {
+                return Err("Not 1 Song".into());
+            }
+            set_atributes(&path, &res.results[0]);
         }
     }
     Ok(())
 }
 
-fn set_atributes(path: &Path) {
+fn set_atributes(path: &Path, song: &Song) {
     let mut tag = Tag::read_from_path(path).unwrap();
-    tag.set_artist("artist");
-    tag.set_album_artist("artist,test");
-    tag.write_to_path("WiseMan-FrankOcean-Revised.m4a").unwrap();
+    tag.set_title(&song.track_name);
+    tag.set_artist(&song.artist_name);
+    tag.set_album(&song.collection_name);
+    if let Some(album_artist) = &song.collection_artist_name {
+        tag.set_album_artist(album_artist);
+    }
+    tag.set_genre(&song.primary_genre_name);
+    tag.set_year(&song.release_date);
+    tag.set_track_number(song.track_number);
+    tag.set_total_tracks(song.track_count);
+    tag.set_disc_number(song.disc_number);
+    tag.set_total_discs(song.disc_count);
+    let artwork = reqwest::blocking::get(
+        song.artwork_url_100
+            .replace("100x100bb.jpg", "3000x3000bb.jpg"),
+    )
+    .unwrap()
+    .bytes()
+    .unwrap();
+    tag.set_artwork(Img::jpeg(artwork.to_vec()));
+    tag.write_to_path(path).unwrap();
     println!("{}", tag.artist().unwrap());
 }
-fn get_song(id: i32) -> Result<(), reqwest::Error> {
-    let res: SongResult = reqwest::blocking::get(format!(
-        "https://itunes.apple.com/lookup?id={id}&entity=song"
-    ))?
-    .json()?;
-    print!("{}", res.results[0].artist_name);
-    Ok(())
-}
-
-// fn get_song_json() -> Result<JSON>
