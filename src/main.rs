@@ -1,54 +1,42 @@
-use std::path::{self, Path};
-use walkdir::{Error, WalkDir};
-//
-// use clap::Parser;
+use clap::Parser;
 use directories::UserDirs;
 use mp4ameta::Tag;
-// #[derive(Parser, Debug)]
-// struct Args {
-//     #[arg(default_value_t=directories::UserDirs::download_dir(&self))]
-//     dir: Path,
-// }
+use std::env;
+use std::path::Path;
+use std::{ffi::OsStr, path::PathBuf};
+use walkdir::{Error, WalkDir};
+#[derive(Parser, Debug)]
+struct Args {
+    dir: String,
+}
 //
 // struct Song {
 //     title: String,
 // }
 fn main() -> Result<(), Error> {
-    // let args = Args::parse();
     walk_dir()
-
-    // let title = "test";
-    // let artist = "test";
-    // let path = "test";
-    // let user = UserDirs::new().expect("no user found");
-    // print!(get_song(1657472093));
-    // if let Some(downloads) = UserDirs::download_dir(&user) {
-    //     let mut tag = Tag::read_from_path(downloads.join(path)).unwrap();
-    //     tag.set_artist(artist);
-    //     tag.set_album_artist(artist);
-    //     tag.write_to_path(downloads.join("WiseMan-FrankOcean-Revised.m4a"))
-    //         .unwrap();
-    //     println!("{}", tag.artist().unwrap());
-    // }
 }
 
 fn walk_dir() -> Result<(), Error> {
-    let user = UserDirs::new().expect("no user found");
-    if let Some(downloads) = UserDirs::download_dir(&user) {
-        for entry in WalkDir::new(downloads) {
-            println!("{:?}", entry?.file_type());
+    let current_dir = env::current_dir().expect("no directory");
+    for entry in WalkDir::new(current_dir) {
+        let entry = entry?;
+        if entry.path().extension() == Some(OsStr::new("m4a"))
+            && let path = entry.path().to_path_buf()
+        {
+            set_atributes(&path);
         }
     }
     Ok(())
 }
 
-// fn set_atributes(path: Path) -> Result<(), Error> {
-//     let user = UserDirs::new().expect("no user found");
-//     if let Some(downloads) = UserDirs::download_dir(&user) {
-//         let mut tag = Tag::read_from_path(downloads.join(temp)).unwrap();
-//     }
-//     Ok(())
-// }
+fn set_atributes(path: &Path) {
+    let mut tag = Tag::read_from_path(path).unwrap();
+    tag.set_artist("artist");
+    tag.set_album_artist("artist,test");
+    tag.write_to_path("WiseMan-FrankOcean-Revised.m4a").unwrap();
+    println!("{}", tag.artist().unwrap());
+}
 //
 // async fn get_song(id: i32) -> String {
 //     let response = reqwest::get(format!(
