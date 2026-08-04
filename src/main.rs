@@ -4,7 +4,9 @@ use serde::Deserialize;
 use std::env;
 use std::error::Error;
 use std::ffi::OsStr;
+use std::fs;
 use std::path::Path;
+use std::process::Command;
 use walkdir::WalkDir;
 #[derive(Parser, Debug)]
 struct Args {
@@ -15,11 +17,13 @@ struct SongResult {
     results: Vec<Song>,
 }
 #[derive(Debug, Deserialize)]
+struct Lyrics {
+    lyrics: String,
+}
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Song {
     artist_name: String,
-    artist_id: u64,
-    track_id: u64,
     collection_artist_name: Option<String>,
     collection_name: String,
     track_name: String,
@@ -54,13 +58,14 @@ fn walk_dir() -> Result<(), Box<dyn Error>> {
             if res.results.len() != 1 {
                 return Err("Not 1 Song".into());
             }
-            set_atributes(&path, &res.results[0]);
+            set_atributes(&path, &res.results[0])?;
+            Command::new("open").arg(&path).status()?;
         }
     }
     Ok(())
 }
 
-fn set_atributes(path: &Path, song: &Song) {
+fn set_atributes(path: &Path, song: &Song) -> Result<(), reqwest::Error> {
     let mut tag = Tag::read_from_path(path).unwrap();
     tag.set_title(&song.track_name);
     tag.set_artist(&song.artist_name);
@@ -82,6 +87,18 @@ fn set_atributes(path: &Path, song: &Song) {
     .bytes()
     .unwrap();
     tag.set_artwork(Img::jpeg(artwork.to_vec()));
+    if &song.track_explicitness == "explicit" {
+        tag.set_advisory_rating(mp4ameta::AdvisoryRating::Explicit);
+    }
+    let artist_name = &song.artist_name;
+    let song_name = &song.track_name;
+    let lyrics: Lyrics = reqwest::blocking::get(format!(
+        "https://api.lyrics.ovh/v1/{artist_name}/{song_name}/"
+    ))?
+    .json()?;
+    tag.set_lyrics(lyrics.lyrics);
+
     tag.write_to_path(path).unwrap();
     println!("{}", tag.artist().unwrap());
+    Ok(())
 }
