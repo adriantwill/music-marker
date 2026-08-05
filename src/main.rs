@@ -1,16 +1,14 @@
 use clap::Parser;
 use mp4ameta::{Img, Tag};
 use serde::Deserialize;
-use std::env;
 use std::error::Error;
 use std::ffi::OsStr;
-use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
-use walkdir::WalkDir;
 #[derive(Parser, Debug)]
 struct Args {
     id: i32,
+    path: PathBuf,
 }
 #[derive(Deserialize)]
 struct SongResult {
@@ -23,8 +21,10 @@ struct Lyrics {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Song {
+    wrapper_type: String,
     artist_name: String,
     collection_artist_name: Option<String>,
+    artist_id: String,
     collection_name: String,
     track_name: String,
     primary_genre_name: String,
@@ -36,42 +36,41 @@ struct Song {
     disc_count: u16,
     artwork_url_100: String,
 }
-
-fn main() -> Result<(), Box<dyn Error>> {
-    walk_dir()
+#[derive(Deserialize)]
+struct Artist {
+    artist_name: String,
 }
 
-fn walk_dir() -> Result<(), Box<dyn Error>> {
-    let current_dir = env::current_dir().expect("no directory");
+fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let song_id = args.id;
-    for entry in WalkDir::new(current_dir) {
-        let entry = entry?;
-        if entry.path().extension() == Some(OsStr::new("m4a"))
-            && let path = entry.path().to_path_buf()
-        {
-            print!("{:?}", path);
-            let res: SongResult = reqwest::blocking::get(format!(
-                "https://itunes.apple.com/lookup?id={song_id}&entity=song"
-            ))?
-            .json()?;
-            if res.results.len() != 1 {
-                return Err("Not 1 Song".into());
-            }
-            set_atributes(&path, &res.results[0])?;
-            Command::new("open").arg(&path).status()?;
+    if args.path.extension() == Some(OsStr::new("m4a")) {
+        let res: SongResult =
+            reqwest::blocking::get(format!("https://itunes.apple.com/lookup?id={song_id}"))?
+                .json()?;
+        if res.results[0].wrapper_type != "track" {
+            return Err("Not 1 Song".into());
         }
+        set_atributes(&args.path, &res.results[0])?;
+        Command::new("open").arg(&args.path).status()?;
+        Command::new("trash").arg(&args.path).status()?;
     }
     Ok(())
 }
 
 fn set_atributes(path: &Path, song: &Song) -> Result<(), reqwest::Error> {
     let mut tag = Tag::read_from_path(path).unwrap();
+    let artist_id = &song.artist_id;
     tag.set_title(&song.track_name);
     tag.set_artist(&song.artist_name);
     tag.set_album(&song.collection_name);
     if let Some(album_artist) = &song.collection_artist_name {
         tag.set_album_artist(album_artist);
+    } else {
+        let res: Artist =
+            reqwest::blocking::get(format!("https://itunes.apple.com/lookup?id={artist_id}"))?
+                .json()?;
+        tag.set_album_artist(res.artist_name);
     }
     tag.set_genre(&song.primary_genre_name);
     tag.set_year(&song.release_date);
@@ -97,8 +96,6 @@ fn set_atributes(path: &Path, song: &Song) -> Result<(), reqwest::Error> {
     ))?
     .json()?;
     tag.set_lyrics(lyrics.lyrics);
-
     tag.write_to_path(path).unwrap();
-    println!("{}", tag.artist().unwrap());
     Ok(())
 }
