@@ -1,6 +1,7 @@
 use clap::Parser;
 use mp4ameta::{Img, Tag};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -24,7 +25,7 @@ struct Song {
     wrapper_type: String,
     artist_name: String,
     collection_artist_name: Option<String>,
-    artist_id: String,
+    artist_id: u64,
     collection_name: String,
     track_name: String,
     primary_genre_name: String,
@@ -54,6 +55,32 @@ fn main() -> Result<(), Box<dyn Error>> {
         set_atributes(&args.path, &res.results[0])?;
         Command::new("open").arg(&args.path).status()?;
         Command::new("trash").arg(&args.path).status()?;
+    } else if args.path.is_dir() {
+        let res: SongResult = reqwest::blocking::get(format!(
+            "https://itunes.apple.com/lookup?id={song_id}&entity=song"
+        ))?
+        .json()?;
+        let mut song_lookup: HashMap<String, Song> = HashMap::new();
+        for song in res.results {
+            let name = song.track_name.clone(); //fix this dont clonse
+            if song.wrapper_type == "track" {
+                song_lookup.insert(name, song);
+            }
+        }
+        let path = args.path.display();
+        for entry in glob::glob(&format!("{path}/*.m4a"))? {
+            let path = entry?;
+            let song_name = path.file_stem().ok_or("no file stem")?;
+            let song_string = song_name.to_str().ok_or("cant convert ostr to str")?;
+            let Some(song) = song_lookup.get(song_string) else {
+                print!("no song found called {}", song_string);
+                continue;
+            };
+            set_atributes(&path, song)?;
+            Command::new("open").arg(&path).status()?;
+        }
+    } else {
+        return Err("Not dir or m4a file".into());
     }
     Ok(())
 }
