@@ -3,7 +3,7 @@ use mp4ameta::{Img, Tag};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::error::Error;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 #[derive(Parser, Debug)]
@@ -62,18 +62,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         .json()?;
         let mut song_lookup: HashMap<String, Song> = HashMap::new();
         for song in res.results {
-            let name = song.track_name.clone(); //fix this dont clonse
             if song.wrapper_type == "track" {
-                song_lookup.insert(name, song);
+                song_lookup.insert(song.track_name.clone(), song);
             }
         }
         let path = args.path.display();
         for entry in glob::glob(&format!("{path}/*.m4a"))? {
             let path = entry?;
-            let song_name = path.file_stem().ok_or("no file stem")?;
-            let song_string = song_name.to_str().ok_or("cant convert ostr to str")?;
-            let Some(song) = song_lookup.get(song_string) else {
-                print!("no song found called {}", song_string);
+            let tag = Tag::read_from_path(&path).unwrap();
+            let Some(song_name) = tag.title().or_else(|| path.file_stem()?.to_str()) else {
+                print!("no title found in file {}", path.display());
+                continue;
+            };
+            let Some(song) = song_lookup.get(song_name) else {
+                print!("no song found called {}", song_name);
                 continue;
             };
             set_atributes(&path, song)?;
