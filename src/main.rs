@@ -5,11 +5,12 @@ use std::collections::HashMap;
 use std::env::{self, current_dir};
 use std::error::Error;
 use std::ffi::OsStr;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 #[derive(Parser, Debug)]
 struct Args {
-    id: i32,
+    id: Option<i32>,
     path: Option<PathBuf>,
 }
 #[derive(Deserialize)]
@@ -50,6 +51,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         None => current_dir()?,
     };
     if path.extension() == Some(OsStr::new("m4a")) {
+        let song_id = match args.id {
+            Some(song_id) => song_id,
+            None => current_dir()?,
+        };
         let (res, artist) = get_song_metadata(song_id)?;
         if res.len() != 1 || res[0].wrapper_type != "track" {
             return Err("Provided id not a song".into());
@@ -81,6 +86,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err("Not dir or m4a file".into());
     }
     Ok(())
+}
+
+fn get_user_input() -> Result<i32, std::num::ParseIntError> {
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .expect("couldnt read input");
+    Ok(input.trim().parse()?)
 }
 
 fn get_song_metadata(id: i32) -> Result<(Vec<Song>, String), reqwest::Error> {
