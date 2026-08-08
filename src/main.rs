@@ -93,6 +93,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 None => {
                     let song_id = get_user_input()?;
                     let (res, artist) = get_song_metadata(song_id)?;
+                    if res.len() != 1 || res[0].wrapper_type != "track" {
+                        return Err("Provided id not a song".into());
+                    }
                     set_atributes(&path, &res[0], artist.clone())?;
                 }
             };
@@ -102,8 +105,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
-
-fn get_single_track(song_id: i32) {}
 
 fn get_user_input() -> Result<i32, std::num::ParseIntError> {
     let mut input = String::new();
