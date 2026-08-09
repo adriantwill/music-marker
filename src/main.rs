@@ -14,8 +14,8 @@ struct Args {
     path: Option<PathBuf>,
 }
 #[derive(Deserialize)]
-struct SongResult {
-    results: Vec<Song>,
+struct TrackResult {
+    results: Vec<ApiItem>,
 }
 #[derive(Deserialize)]
 struct ArtistResult {
@@ -27,8 +27,7 @@ struct Lyrics {
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Song {
-    wrapper_type: String,
+struct Track {
     artist_name: String,
     artist_id: u64,
     collection_name: String,
@@ -44,8 +43,27 @@ struct Song {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct Collection {
+    artist_id: u64,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Artist {
     artist_name: String,
+}
+#[derive(Deserialize)]
+#[serde(tag = "wrapperType", rename_all = "lowercase")]
+enum ApiItem {
+    Track(Track),
+    Collection(Collection),
+}
+impl ApiItem {
+    fn artist_id(&self) -> u64 {
+        match self {
+            Self::Track(track) => track.artist_id,
+            Self::Collection(collection) => collection.artist_id,
+        }
+    }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -60,24 +78,28 @@ fn main() -> Result<(), Box<dyn Error>> {
             None => get_user_input()?,
         };
         let (res, artist) = get_song_metadata(song_id)?;
-        if res.len() != 1 || res[0].wrapper_type != "track" {
-            return Err("Provided id not a song".into());
-        }
-        set_atributes(&path, &res[0], artist)?;
-    } else if path.is_dir() {
-        let lookup = if let Some(song_id) = args.id {
-            let (res, artist) = get_song_metadata(song_id)?;
-            let mut song_lookup = HashMap::new();
-
-            for song in res {
-                if song.wrapper_type == "track" {
-                    song_lookup.insert(song.track_name.clone(), song);
-                }
+        match &res[0] {
+            ApiItem::Track(track) if res.len() == 1 => {
+                set_atributes(&path, &track, artist)?;
             }
-
-            Some((song_lookup, artist))
-        } else {
-            None
+            _ => {
+                return Err("Provided id not a song".into());
+            }
+        }
+    } else if path.is_dir() {
+        let lookup = match args.id {
+            Some(song_id) => {
+                let (res, artist) = get_song_metadata(song_id)?;
+                let track_lookup: HashMap<String, Track> = res
+                    .into_iter()
+                    .filter_map(|item| match item {
+                        ApiItem::Track(track) => Some((track.track_name.clone(), track)),
+                        ApiItem::Collection(_) => None,
+                    })
+                    .collect();
+                Some((track_lookup, artist))
+            }
+            None => None,
         };
         let path = path.display();
         for entry in glob::glob(&format!("{path}/*.m4a"))? {
@@ -98,10 +120,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                 None => {
                     let song_id = get_user_input()?;
                     let (res, artist) = get_song_metadata(song_id)?;
-                    if res.len() != 1 || res[0].wrapper_type != "track" {
-                        return Err("Provided id not a song".into());
+                    match &res[0] {
+                        ApiItem::Track(track) if res.len() == 1 => {
+                            set_atributes(&path, &track, artist.clone())?;
+                        }
+                        _ => {
+                            return Err("Provided id not a song".into());
+                        }
                     }
-                    set_atributes(&path, &res[0], artist.clone())?;
                 }
             };
         }
@@ -119,12 +145,15 @@ fn get_user_input() -> Result<i32, std::num::ParseIntError> {
     Ok(input.trim().parse()?)
 }
 
-fn get_song_metadata(id: i32) -> Result<(Vec<Song>, String), reqwest::Error> {
-    let res: SongResult = reqwest::blocking::get(format!(
+fn get_song_metadata(id: i32) -> Result<(Vec<ApiItem>, String), Box<dyn Error>> {
+    let res: TrackResult = reqwest::blocking::get(format!(
         "https://itunes.apple.com/lookup?id={id}&entity=song"
     ))?
     .json()?;
-    let artist_id = res.results[0].artist_id;
+    if res.results.len() < 1 {
+        return Err("No matching song/album".into());
+    }
+    let artist_id = res.results[0].artist_id();
     let artist: ArtistResult =
         reqwest::blocking::get(format!("https://itunes.apple.com/lookup?id={artist_id}"))?
             .json()?;
@@ -132,7 +161,7 @@ fn get_song_metadata(id: i32) -> Result<(Vec<Song>, String), reqwest::Error> {
     Ok((res.results, artist_name))
 }
 
-fn set_atributes(path: &Path, song: &Song, album_artist: String) -> Result<(), Box<dyn Error>> {
+fn set_atributes(path: &Path, song: &Track, album_artist: String) -> Result<(), Box<dyn Error>> {
     let mut tag = Tag::read_from_path(path)?;
     tag.set_title(&song.track_name);
     tag.set_artist(&song.artist_name);
