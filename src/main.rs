@@ -78,14 +78,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             None => get_user_input()?,
         };
         let (res, artist) = get_song_metadata(song_id)?;
-        match &res[0] {
-            ApiItem::Track(track) if res.len() == 1 => {
-                set_atributes(&path, &track, artist)?;
-            }
-            _ => {
-                return Err("Provided id not a song".into());
-            }
-        }
+        validate_song(&path, &res[0], artist)?
     } else if path.is_dir() {
         let lookup = match args.id {
             Some(song_id) => {
@@ -108,11 +101,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Some(lookup) => {
                     let tag = Tag::read_from_path(&path)?;
                     let Some(song_name) = tag.title().or_else(|| path.file_stem()?.to_str()) else {
-                        print!("no title found in file {}", path.display());
+                        println!("no title found in file {}", path.display());
                         continue;
                     };
                     let Some(song) = lookup.0.get(song_name) else {
-                        print!("no song found called {}", song_name);
+                        println!("no song found called {}", song_name);
                         continue;
                     };
                     set_atributes(&path, &song, lookup.1.clone())?;
@@ -120,14 +113,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 None => {
                     let song_id = get_user_input()?;
                     let (res, artist) = get_song_metadata(song_id)?;
-                    match &res[0] {
-                        ApiItem::Track(track) if res.len() == 1 => {
-                            set_atributes(&path, &track, artist.clone())?;
-                        }
-                        _ => {
-                            return Err("Provided id not a song".into());
-                        }
-                    }
+                    validate_song(&path, &res[0], artist)?
                 }
             };
         }
@@ -143,6 +129,15 @@ fn get_user_input() -> Result<i32, std::num::ParseIntError> {
         .read_line(&mut input)
         .expect("couldnt read input");
     Ok(input.trim().parse()?)
+}
+
+fn validate_song(path: &Path, res: &ApiItem, album_artist: String) -> Result<(), Box<dyn Error>> {
+    match res {
+        ApiItem::Track(track) => set_atributes(&path, &track, album_artist),
+        _ => {
+            return Err("Provided id not a song".into());
+        }
+    }
 }
 
 fn get_song_metadata(id: i32) -> Result<(Vec<ApiItem>, String), Box<dyn Error>> {
