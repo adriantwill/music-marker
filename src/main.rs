@@ -17,6 +17,10 @@ struct Args {
 struct SongResult {
     results: Vec<Song>,
 }
+#[derive(Deserialize)]
+struct ArtistResult {
+    results: Vec<Artist>,
+}
 #[derive(Debug, Deserialize)]
 struct Lyrics {
     lyrics: String,
@@ -39,6 +43,7 @@ struct Song {
     artwork_url_100: String,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Artist {
     artist_name: String,
 }
@@ -120,10 +125,11 @@ fn get_song_metadata(id: i32) -> Result<(Vec<Song>, String), reqwest::Error> {
     ))?
     .json()?;
     let artist_id = res.results[0].artist_id;
-    let artist: Artist =
+    let artist: ArtistResult =
         reqwest::blocking::get(format!("https://itunes.apple.com/lookup?id={artist_id}"))?
             .json()?;
-    Ok((res.results, artist.artist_name))
+    let artist_name = artist.results[0].artist_name.clone();
+    Ok((res.results, artist_name))
 }
 
 fn set_atributes(path: &Path, song: &Song, album_artist: String) -> Result<(), Box<dyn Error>> {
