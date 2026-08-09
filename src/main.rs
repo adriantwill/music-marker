@@ -43,25 +43,20 @@ struct Track {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Collection {
-    artist_id: u64,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct Artist {
     artist_name: String,
 }
 #[derive(Deserialize)]
-#[serde(tag = "wrapperType", rename_all = "lowercase")]
+#[serde(tag = "wrapperType", rename_all = "camelCase")]
 enum ApiItem {
     Track(Track),
-    Collection(Collection),
+    Collection { artist_id: u64 },
 }
 impl ApiItem {
     fn artist_id(&self) -> u64 {
         match self {
             Self::Track(track) => track.artist_id,
-            Self::Collection(collection) => collection.artist_id,
+            Self::Collection { artist_id } => *artist_id,
         }
     }
 }
@@ -87,7 +82,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .into_iter()
                     .filter_map(|item| match item {
                         ApiItem::Track(track) => Some((track.track_name.clone(), track)),
-                        ApiItem::Collection(_) => None,
+                        ApiItem::Collection { .. } => None,
                     })
                     .collect();
                 Some((track_lookup, artist))
