@@ -1,14 +1,12 @@
 use clap::Parser;
 use mp4ameta::{Img, Tag};
 use serde::Deserialize;
-use serde_json::json;
 use std::collections::HashMap;
 use std::env::current_dir;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 #[derive(Parser, Debug)]
 struct Args {
     id: Option<i32>,
@@ -75,7 +73,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     if path.extension() == Some(OsStr::new("m4a")) {
         let song_id = match args.id {
             Some(song_id) => song_id,
-            None => get_user_input()?,
+            None => get_user_input(&path)?,
         };
         let (res, artist) = get_song_metadata(song_id)?;
         validate_song(&path, &res[0], artist)?
@@ -104,14 +102,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                         println!("no title found in file {}", path.display());
                         continue;
                     };
-                    let Some(song) = lookup.0.get(song_name) else {
-                        println!("no song found called {}", song_name);
-                        continue;
+                    if let Some(song) = lookup.0.get(song_name) {
+                        set_atributes(&path, &song, lookup.1.clone())?;
+                    } else {
+                        println!("No song titled {} in album ", song_name);
+                        let song_id = get_user_input(&path)?;
+                        let (res, artist) = get_song_metadata(song_id)?;
+                        validate_song(&path, &res[0], artist)?
                     };
-                    set_atributes(&path, &song, lookup.1.clone())?;
                 }
                 None => {
-                    let song_id = get_user_input()?;
+                    let song_id = get_user_input(&path)?;
                     let (res, artist) = get_song_metadata(song_id)?;
                     validate_song(&path, &res[0], artist)?
                 }
@@ -123,8 +124,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn get_user_input() -> Result<i32, Box<dyn Error>> {
-    print!("Enter song id: ");
+fn get_user_input(path: &Path) -> Result<i32, Box<dyn Error>> {
+    print!("Song ID for {}: ", path.display());
     io::stdout().flush()?;
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
@@ -134,9 +135,7 @@ fn get_user_input() -> Result<i32, Box<dyn Error>> {
 fn validate_song(path: &Path, res: &ApiItem, album_artist: String) -> Result<(), Box<dyn Error>> {
     match res {
         ApiItem::Track(track) => set_atributes(&path, &track, album_artist),
-        _ => {
-            return Err("Provided id not a song".into());
-        }
+        _ => Err("Provided id not a song".into()),
     }
 }
 
@@ -178,16 +177,24 @@ fn set_atributes(path: &Path, song: &Track, album_artist: String) -> Result<(), 
         tag.set_advisory_rating(mp4ameta::AdvisoryRating::Explicit);
     }
     let artist_name = &song.artist_name;
+    let normal_artist: String = artist_name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || c.is_ascii_whitespace())
+        .collect();
     let song_name = &song.track_name;
-    let Ok(lyrics): Result<Lyrics, reqwest::Error> = reqwest::blocking::get(format!(
-        "https://api.lyrics.ovh/v1/{artist_name}/{song_name}/"
+    let normal_track: String = song_name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || c.is_ascii_whitespace())
+        .collect();
+    if let Ok(lyrics) = reqwest::blocking::get(format!(
+        "https://api.lyrics.ovh/v1/{normal_artist}/{normal_track}/"
     ))?
-    .json() else {
-        println!("couldnt get lyrics");
-        return Ok(());
-    };
-    tag.set_lyrics(lyrics.lyrics);
+    .json::<Lyrics>()
+    {
+        tag.set_lyrics(lyrics.lyrics);
+    } else {
+        println!("Lyrics unavaiable for {}", song.track_name);
+    }
     tag.write_to_path(path)?;
-    Command::new("open").arg(path).status()?;
     Ok(())
 }
