@@ -1,11 +1,12 @@
 use clap::Parser;
 use mp4ameta::{Img, Tag};
 use serde::Deserialize;
+use serde_json::json;
 use std::collections::HashMap;
 use std::env::current_dir;
 use std::error::Error;
 use std::ffi::OsStr;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 #[derive(Parser, Debug)]
@@ -47,7 +48,11 @@ struct Artist {
     artist_name: String,
 }
 #[derive(Deserialize)]
-#[serde(tag = "wrapperType", rename_all = "camelCase")]
+#[serde(
+    tag = "wrapperType",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 enum ApiItem {
     Track(Track),
     Collection { artist_id: u64 },
@@ -118,11 +123,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn get_user_input() -> Result<i32, std::num::ParseIntError> {
+fn get_user_input() -> Result<i32, Box<dyn Error>> {
+    print!("Enter song id: ");
+    io::stdout().flush()?;
     let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .expect("couldnt read input");
+    io::stdin().read_line(&mut input)?;
     Ok(input.trim().parse()?)
 }
 
@@ -174,10 +179,13 @@ fn set_atributes(path: &Path, song: &Track, album_artist: String) -> Result<(), 
     }
     let artist_name = &song.artist_name;
     let song_name = &song.track_name;
-    let lyrics: Lyrics = reqwest::blocking::get(format!(
+    let Ok(lyrics): Result<Lyrics, reqwest::Error> = reqwest::blocking::get(format!(
         "https://api.lyrics.ovh/v1/{artist_name}/{song_name}/"
     ))?
-    .json()?;
+    .json() else {
+        println!("couldnt get lyrics");
+        return Ok(());
+    };
     tag.set_lyrics(lyrics.lyrics);
     tag.write_to_path(path)?;
     Command::new("open").arg(path).status()?;
